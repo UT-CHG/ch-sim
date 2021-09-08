@@ -2,13 +2,16 @@ from taccjm import TACCJobManager
 from pathlib import Path
 import shutil
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SimulationManager(TACCJobManager):
     """An wrapper around TACCJobManager meant for working with simulations - which can be collections of jobs.
     """
 
-    def __init__(self, system, user=None):
-        super().__init__(system, user=user)
+    def __init__(self, system, user=None, psw=None):
+        super().__init__(system, user=user, psw=psw)
 
     def _setup_app_dir(self, simulator, dirname, **config):
         """Setup a local app dir for a simulation
@@ -53,10 +56,23 @@ class SimulationManager(TACCJobManager):
         """Setup the simulation on TACC
         """
 
-        print("Setting up simulation.")
+        logger.info("Setting up simulation.")
         # setup a TACCJM application
         tmpdir = ".tmp_chsim_app"
         self._setup_app_dir(simulator, tmpdir, **config)
         app_config = self.deploy_app(local_app_dir=tmpdir, overwrite=True)
-        #shutil.rmtree(tmpdir)
-        
+        shutil.rmtree(tmpdir)
+
+        job_configs = []
+        for job_config in simulator.generate_job_configs(self, **config):
+            config = self.setup_job(job_config)
+            job_configs.append(config)
+
+        njobs = len(job_configs)
+        logger.info("Setup {njobs} jobs.")
+        submit = input(f"Submit {njobs} jobs? [y/n]: ").strip().lower() == "y"
+        if submit:
+            for config in job_configs:
+                self.submit_job(config['job_id'])
+
+        # TODO - save job configs if the user doesn't submit
