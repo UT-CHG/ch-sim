@@ -6,6 +6,7 @@ import logging
 import json
 import math
 from dotenv import load_dotenv
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -94,17 +95,22 @@ class BaseSimulator:
         totalProcs = nodeCount * procsPerNode
         writers = max(1, nodeCount // 2)
         workers = totalProcs - writers
-        
+        self._run_command(f"cp {simulation_config['inputs_dir']}/* .")
+        self._run_command(f"cp {simulation_config['execs_dir']}/{{adcprep,padcirc}} .")
+        self._run_command(f"chmod +x adcprep padcirc")
         logger.info("Starting first adcprep run. . .")
-        subprocess.run(f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep", shell=True, stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE)
+        # ADCPREP returns an exit code of 1 on success - it's terrible . . .
+        self._run_command(f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep", check=False)
         logger.info("Starting second adcprep run. . .")
-        subprocess.run(f"printf '{workers}\\n2\\n' | ./adcprep", shell=True, stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE)
+        self._run_command(f"printf '{workers}\\n2\\n' | ./adcprep", check=False)
         logger.info("Completed second adcprep run. Starting ADCIRC . . .")
-        subprocess.run(f"ibrun ./padcirc -W {writers}", shell=True, check=True, stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE)
+        self._run_command(f"ibrun ./padcirc -W {writers}")
         logger.info("Completed ADCIRC run.")
+
+    def _run_command(self, command, check=True, **kwargs):
+        logger.info(f"Running '{command}'")
+        subprocess.run(command, shell=True, check=check, **kwargs)
+
 
     def _get_args(self):
         parser = ap.ArgumentParser()
@@ -122,7 +128,7 @@ class BaseSimulator:
         """Get config of local job
         """
 
-        with open("job_config.json", "r") as fp:
+        with open("job.json", "r") as fp:
             return json.load(fp)
 
     def generate_job_configs(self, manager, **config):
