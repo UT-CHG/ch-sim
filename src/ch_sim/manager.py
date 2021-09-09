@@ -50,7 +50,7 @@ class SimulationManager(TACCJobManager):
             pass
 
         with open(assets_dir + "/run.sh", "w") as fp:
-            fp.write("#!/bin/bash\n\nmodule load python3\npython3 sim.py --action=run")
+            fp.write("#!/bin/bash\n\nconda activate ch-sim\npython3 sim.py --action=run")
 
     def setup_simulation(self, simulator, **config):
         """Setup the simulation on TACC

@@ -161,12 +161,12 @@ class BaseSimulator:
     def hours_to_runtime_str(hours):
         days = math.floor(hours / 24)
         hours = hours - 24*days
-        minutes = 60 * (hours - math.floor(hours))
+        minutes = int(60 * (hours - math.floor(hours)))
         hours = int(hours)
         if days:
             return f"{days}-{hours:02}:{minutes:02}:00"
         else:
-            return "{hours:02}:{minutes:02}:00"
+            return f"{hours:02}:{minutes:02}:00"
 
 class EnsembleSimulator(BaseSimulator):
     """A simulation class representing a set of ADCIRC runs.
