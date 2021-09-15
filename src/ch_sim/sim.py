@@ -7,8 +7,10 @@ import json
 import math
 from dotenv import load_dotenv
 import subprocess
+from .pylauncher4 import IbrunLauncher
 
 logger = logging.getLogger(__name__)
+
 
 class BaseSimulator:
     """A base simulation class representing a single ADCIRC run.
@@ -16,9 +18,11 @@ class BaseSimulator:
     The class contains methods shared by all simulations.
     """
 
-    def __init__(self, system,
-        user=None, psw=None,
-        allocation=None, deps=None, name=None):
+    REQUIRED_PARAMS = {"execs_dir": str, "inputs_dir": str}
+
+    def __init__(
+        self, system, user=None, psw=None, allocation=None, deps=None, name=None
+    ):
         """Initialize the simulator.
 
         Args:
@@ -36,14 +40,15 @@ class BaseSimulator:
         self.name = name
         self.deps = deps
         self.allocation = allocation
-        self.psw=psw
-        
+        self.psw = psw
+
         self._init_from_env()
 
         import __main__
+
         self.script_file = script_file = __main__.__file__
         if name is None:
-           self.name = os.path.basename(script_file).split(".")[0]
+            self.name = os.path.basename(script_file).split(".")[0]
 
     def _init_from_env(self):
         load_dotenv()
@@ -52,27 +57,42 @@ class BaseSimulator:
             if env_val is not None and getattr(self, attr.lower()) is None:
                 setattr(self, attr.lower(), env_val)
 
-    def _validate_config(self, config):
+    def _validate_config(self):
         """Ensure config is accurate
-        """    
+        """
 
-        for arg in ['execs_dir', 'inputs_dir']:
-            if config.get(arg) is None:
+        for arg, arg_type in self.REQUIRED_PARAMS.items():
+            val = self.config.get(arg)
+            if val is None:
                 raise ValueError(f"Missing requred argument '{arg}'")
+
+            if type(arg_type) is list:
+                type_match = type(val) in arg_type
+            else:
+                type_match = type(val) is arg_type
+
+            if not type_match:
+                raise TypeError(
+                    f"Got value {val} of type '{type(val)}' for argument '{arg}',"
+                    f" expected type '{arg_type}'"
+                )
 
     def run(self, **config):
         """Either setup the simulation/submit jobs OR run on TACC resources.
         """
-        
+
         # Determine what we need to do
         args = self._get_args()
         action = args.action
+        self.config = config
         if action == "setup":
-            self._validate_config(config)
+            self._validate_config()
             self.setup(**config)
             return
         elif action == "run":
-            self._run_on_tacc(**config)
+            job_config = self._get_job_config()
+            self.setup_job(job_config)
+            self.run_job(job_config)
         else:
             raise ValueError(f"Unsupported action {action}")
 
@@ -83,34 +103,49 @@ class BaseSimulator:
         manager = SimulationManager(self.system, user=self.user, psw=self.psw)
         manager.setup_simulation(self, **config)
 
-    def _run_on_tacc(self, **simulation_config):
+    def setup_job(self, job_config):
+        """Called before the main work is done for a job
+        """
+
+        exec_name = self._get_exec_name()
+        os.mkdir("inputs")
+        self._run_command(f"cp {self.config['inputs_dir']}/* inputs")
+        self._run_command(
+            f"cp {self.config['execs_dir']}/" + "{adcprep," + exec_name + "} ."
+        )
+        self._run_command(f"chmod +x adcprep {exec_name}")
+
+    def run_job(self, job_config):
         """Run on HPC resources.
 
         This is the entry point for a single job within the simulation.
         """
 
-        job_config = self._get_job_config()
         nodeCount = int(job_config.get("nodeCount"))
         procsPerNode = int(job_config.get("processorsPerNode"))
-        totalProcs = nodeCount * procsPerNode
-        writers = max(1, nodeCount // 2)
-        workers = totalProcs - writers
-        self._run_command(f"cp {simulation_config['inputs_dir']}/* .")
-        self._run_command(f"cp {simulation_config['execs_dir']}/{{adcprep,padcirc}} .")
-        self._run_command(f"chmod +x adcprep padcirc")
+        writers, workers = BaseSimulator.get_writers_and_workers(
+            nodeCount, procsPerNode
+        )
+
         logger.info("Starting first adcprep run. . .")
         # ADCPREP returns an exit code of 1 on success - it's terrible . . .
-        self._run_command(f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep", check=False)
+        self._run_command(
+            f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep", check=False
+        )
         logger.info("Starting second adcprep run. . .")
         self._run_command(f"printf '{workers}\\n2\\n' | ./adcprep", check=False)
         logger.info("Completed second adcprep run. Starting ADCIRC . . .")
-        self._run_command(f"ibrun ./padcirc -W {writers}")
+        exec_name = self._get_exec_name()
+        self._run_command(f"ibrun ./{exec_name} -I inputs -W {writers}")
         logger.info("Completed ADCIRC run.")
 
     def _run_command(self, command, check=True, **kwargs):
         logger.info(f"Running '{command}'")
         subprocess.run(command, shell=True, check=check, **kwargs)
 
+    def _get_exec_name(self):
+        swan = self.config.get("swan", False)
+        return "padcswan" if swan else "padcirc"
 
     def _get_args(self):
         parser = ap.ArgumentParser()
@@ -123,7 +158,7 @@ class BaseSimulator:
         This mocks outputs of ADCIRC runs and allows for testing of user code.
         """
         pass
-    
+
     def _get_job_config(self):
         """Get config of local job
         """
@@ -160,13 +195,13 @@ class BaseSimulator:
             res["allocation"] = self.allocation
         if "runtime" in config:
             res["maxRunTime"] = BaseSimulator.hours_to_runtime_str(config["runtime"])
- 
+
         return res
 
     @staticmethod
     def hours_to_runtime_str(hours):
         days = math.floor(hours / 24)
-        hours = hours - 24*days
+        hours = hours - 24 * days
         minutes = int(60 * (hours - math.floor(hours)))
         hours = int(hours)
         if days:
@@ -174,9 +209,142 @@ class BaseSimulator:
         else:
             return f"{hours:02}:{minutes:02}:00"
 
+    @staticmethod
+    def get_writers_and_workers(nodeCount, procsPerNode):
+        totalProcs = nodeCount * procsPerNode
+        writers = max(1, nodeCount // 2)
+        workers = totalProcs - writers
+        return workers, writers
+
+
 class EnsembleSimulator(BaseSimulator):
     """A simulation class representing a set of ADCIRC runs.
     """
 
-    def generate():
-        pass
+    REQUIRED_PARAMS = {
+        # executables directory
+        "execs_dir": str,
+        # directory for common inputs across all runs OR template input files
+        "inputs_dir": str,
+        # list of dictionaries describing each run
+        "runs": list,
+        # per-task runtime
+        "runtime": [float, int],
+        # per-task nodecount
+        "nodeCount": int,
+    }
+
+    def _validate_config(self):
+        super()._validate_config()
+
+        for r in self.config["runs"]:
+            if type(r) is not dict:
+                raise TypeError(
+                    "Runs should be a list of dictionaries with run information!"
+                )
+
+    def generate_job_configs(self, manager, **config):
+        maxJobNodes = config.get("maxJobNodes", 30)
+        maxJobRuntime = config.get("maxJobRuntime", 24)
+        runs = config["runs"]
+        # Note that for EnsembleSimulator config["nodeCount"] is the per-run nodes, NOT for the entire simulation
+        nodesPerRun, timePerRun = config["nodeCount"], config["runtime"]
+        numSlots = int(maxJobNodes // nodesPerRun)
+        consecRuns = int(maxJobRuntime // timePerRun)
+        runsPerJob = numSlots * consecRuns
+
+        if not numSlots:
+            raise ValueError(
+                f"Nodes per run is {config['nodeCount']}, but the maximum is {maxJobNodes}."
+                f" If you really need that many nodes for a single run, increase the maximum by setting maxJobNodes."
+            )
+        elif not consecRuns:
+            raise ValueError(
+                f"Runtime for a single run is {config['runtime']} hours, but the maximum is {maxRuntime} hours."
+                f" If you really need a longer runtime, increase the maximum by setting maxJobRuntime."
+                " Note that the maximum per-job runtime on TACC is typically 48 hours."
+            )
+
+        res = []
+        for start in range(0, len(runs), runsPerJob):
+            stop = min(len(runs), start + runsPerJob)
+            jobRuns = runs[start:stop]
+            inds = list(range(start, stop))
+            input_config = config.copy()
+            numJobRuns = len(jobRuns)
+            if numJobRuns == runsPerJob:
+                input_config["nodeCount"] = numSlots * nodesPerRun
+                input_config["runtime"] = consecRuns * timePerRun
+            else:
+                input_config["nodeCount"] = min(numSlots, numJobRuns) * nodesPerRun
+                input_config["runtime"] = math.ceil(numJobRuns / numSlots) * timePerRun
+            config = self._base_job_config(**input_config)
+            config["jobRuns"] = jobRuns
+            config["jobRunInds"] = inds
+            res.append(config)
+        return res
+
+    def setup_job(self, job_config):
+        super().setup_job(job_config)
+        os.mkdir("runs")
+        ndigits = len(str(len(self.config["runs"])))
+        self.run_dirs = []
+        for run, ind in zip(job_config["jobRuns"], job_config["jobInds"]):
+            run_dir = f"runs/run{ind:0{ndigits}}"
+            os.mkdir(run_dir)
+            self._run_command(f"ln -s inputs/* {run_dir}")
+            self.setup_run(run, run_dir, job_config)
+            self.run_dirs.append(run_dir)
+
+    def setup_run(self, run, run_dir, job_config):
+        """Do any setup specific to the run.
+
+        For parameter sweeps, this is where parameters are set.
+        """
+
+        if "inputs_dir" in run:
+            # add extra inputs/overwrite existing ones
+            self._run_command(f"ln -s {inputs_dir}/* {run_dir}")
+
+        if "parameters" in run:
+            # TODO - edit input parameter files, performing copy-on-write
+            pass
+
+    def run_job(self, job_config):
+
+        # Step 1 - generate Pylauncher input
+        tasks = []
+
+        # We have to be careful to use nodeCount from config - because that corresponds
+        # to the per-run nodes
+        writers, workers = BaseSimulator.get_writers_and_workers(
+            self.config["nodeCount"], job_config["processorsPerNode"]
+        )
+
+        total = workers + writers
+        exec_name = self._get_exec_name()
+
+        for run_dir in self.run_dirs:
+            pre_process = ";".join(
+                [
+                    f"cd {run_dir}",
+                    f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep;",
+                    f"printf '{workers}\\n2\\n' | ./adcprep",
+                    f"cd ..",
+                ]
+            )
+
+            task = {
+                "cores": total,
+                "pre_process": pre_process,
+                "main": f"./{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
+            }
+
+            tasks.append(task)
+
+        # step 2 - launch Pylauncher with this input
+        outfile = "pylauncher_jobs.json"
+        with open(outfile, "w") as fp:
+            json.dump(tasks, fp)
+
+        IBRunLauncher(outfile, pre_post_process=True)
