@@ -108,7 +108,7 @@ class BaseSimulator:
         """
 
         exec_name = self._get_exec_name()
-        os.mkdir("inputs")
+        os.makedirs("inputs", exist_ok=True)
         self._run_command(f"cp {self.config['inputs_dir']}/* inputs")
         self._run_command(
             f"cp {self.config['execs_dir']}/" + "{adcprep," + exec_name + "} ."
@@ -214,7 +214,7 @@ class BaseSimulator:
         totalProcs = nodeCount * procsPerNode
         writers = max(1, nodeCount // 2)
         workers = totalProcs - writers
-        return workers, writers
+        return writers, workers
 
 
 class EnsembleSimulator(BaseSimulator):
@@ -286,13 +286,14 @@ class EnsembleSimulator(BaseSimulator):
 
     def setup_job(self, job_config):
         super().setup_job(job_config)
-        os.mkdir("runs")
+        os.makedirs("runs", exist_ok=True)
         ndigits = len(str(len(self.config["runs"])))
         self.run_dirs = []
-        for run, ind in zip(job_config["jobRuns"], job_config["jobInds"]):
-            run_dir = f"runs/run{ind:0{ndigits}}"
-            os.mkdir(run_dir)
-            self._run_command(f"ln -s inputs/* {run_dir}")
+        job_dir = job_config['job_dir']
+        for run, ind in zip(job_config["jobRuns"], job_config["jobRunInds"]):
+            run_dir = f"{job_dir}/runs/run{ind:0{ndigits}}"
+            os.makedirs(run_dir, exist_ok=True)
+            self._run_command(f"ln -sf {job_dir}/inputs/* {run_dir}")
             self.setup_run(run, run_dir, job_config)
             self.run_dirs.append(run_dir)
 
@@ -304,7 +305,7 @@ class EnsembleSimulator(BaseSimulator):
 
         if "inputs_dir" in run:
             # add extra inputs/overwrite existing ones
-            self._run_command(f"ln -s {inputs_dir}/* {run_dir}")
+            self._run_command(f"ln -sf {inputs_dir}/* {run_dir}")
 
         if "parameters" in run:
             # TODO - edit input parameter files, performing copy-on-write
@@ -328,7 +329,7 @@ class EnsembleSimulator(BaseSimulator):
             pre_process = ";".join(
                 [
                     f"cd {run_dir}",
-                    f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep;",
+                    f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep",
                     f"printf '{workers}\\n2\\n' | ./adcprep",
                     f"cd ..",
                 ]
@@ -347,4 +348,4 @@ class EnsembleSimulator(BaseSimulator):
         with open(outfile, "w") as fp:
             json.dump(tasks, fp)
 
-        IBRunLauncher(outfile, pre_post_process=True)
+        IbrunLauncher(outfile, pre_post_process=True)

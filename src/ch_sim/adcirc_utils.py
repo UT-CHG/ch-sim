@@ -360,76 +360,9 @@ def read_fort15(f15_file, ds=None):
     for i, p in enumerate(["DTDP", "STATIM", "REFTIM", "WTIMINC ", "RNDAY"]):
         ds, ln = read_param_line(ds, [p], f15_file, ln=ln, dtypes=[int])
 
-    if ds.attrs["NRAMP"] in [0, 1]:
-        ds, ln = read_param_line(ds, ["DRAMP"], f15_file, ln=ln, dtypes=[int])
-    elif ds.attrs["NRAMP"] == 2:
-        ds, ln = read_param_line(
-            ds, ["DRAMP", "DRAMPExtFlux", "FluxSettlingTime"], f15_file, ln=ln
-        )
-    elif ds.attrs["NRAMP"] == 3:
-        ds, ln = read_param_line(
-            ds,
-            ["DRAMP", "DRAMPExtFlux", "FluxSettlingTime", "DRAMPIntFlux"],
-            f15_file,
-            ln=ln,
-        )
-    elif ds.attrs["NRAMP"] == 4:
-        ds, ln = read_param_line(
-            ds,
-            ["DRAMP", "DRAMPExtFlux", "FluxSettlingTime", "DRAMPIntFlux", "DRAMPElev"],
-            f15_file,
-            ln=ln,
-        )
-    elif ds.attrs["NRAMP"] == 5:
-        ds, ln = read_param_line(
-            ds,
-            [
-                "DRAMP",
-                "DRAMPExtFlux",
-                "FluxSettlingTime",
-                "DRAMPIntFlux",
-                "DRAMPElev",
-                "DRAMPTip",
-            ],
-            f15_file,
-            ln=ln,
-        )
-    elif ds.attrs["NRAMP"] == 6:
-        ds, ln = read_param_line(
-            ds,
-            [
-                "DRAMP",
-                "DRAMPExtFlux",
-                "FluxSettlingTime",
-                "DRAMPIntFlux",
-                "DRAMPElev",
-                "DRAMPTip",
-                "DRAMPMete",
-            ],
-            f15_file,
-            ln=ln,
-        )
-    elif ds.attrs["NRAMP"] == 7:
-        ds, ln = read_param_line(
-            ds,
-            [
-                "DRAMP",
-                "DRAMPExtFlux",
-                "FluxSettlingTime",
-                "DRAMPIntFlux",
-                "DRAMPElev",
-                "DRAMPTip",
-                "DRAMPMete",
-                "DRAMPWRad",
-            ],
-            f15_file,
-            ln=ln,
-        )
-    elif ds.attrs["NRAMP"] == 8:
-        ds, ln = read_param_line(
-            ds,
-            [
-                "DRAMP",
+
+    ramp_params = [
+             	"DRAMP",
                 "DRAMPExtFlux",
                 "FluxSettlingTime",
                 "DRAMPIntFlux",
@@ -438,9 +371,13 @@ def read_fort15(f15_file, ds=None):
                 "DRAMPMete",
                 "DRAMPWRad",
                 "DUnRampMete",
-            ],
-            f15_file,
-            ln=ln,
+    ]
+
+    if ds.attrs["NRAMP"] in [0, 1]:
+        ds, ln = read_param_line(ds, ["DRAMP"], f15_file, ln=ln, dtypes=[int])
+    elif ds.attrs["NRAMP"] >= 2:
+        ds, ln = read_param_line(
+            ds, ramp_params[:ds.attrs["NRAMP"]+1], f15_file, ln=ln
         )
 
     ds, ln = read_param_line(
@@ -503,13 +440,15 @@ def read_fort15(f15_file, ds=None):
             dtypes=5 * [float],
         )
         tides.append(tc.attrs)
-    ds = xr.merge(
-        [ds, pd.DataFrame(tides).set_index("TIPOTAG").to_xarray()],
-        combine_attrs="override",
-    )
+
+    if len(tides):
+      ds = xr.merge(
+          [ds, pd.DataFrame(tides).set_index("TIPOTAG").to_xarray()],
+          combine_attrs="override",
+      )
 
     ds, ln = read_param_line(ds, ["NBFR"], f15_file, ln=ln, dtypes=[int])
-
+    print("NBFR", ds.attrs["NBFR"])
     # Tidal forcing frequencies on elevation specified boundaries
     tides_elev = []
     for i in range(ds.attrs["NBFR"]):
@@ -553,7 +492,7 @@ def read_fort15(f15_file, ds=None):
 
     # ANGINN
     ds, ln = read_param_line(ds, ["ANGINN"], f15_file, ln=ln, dtypes=[float])
-
+    print(ds.attrs["ANGINN"], ln)
     # TODO: Handle cases with tidal forcing frequencies on normal flow external boundaries
     # if not set([int(x['IBTYPE']) for x in info['NBOU_BOUNDS']]).isdisjoint([2, 12, 22, 32, 52]):
     #   msg = "Tidal forcing frequencies on normal flow extrnal boundaries not implemented yet"
@@ -589,6 +528,7 @@ def read_fort15(f15_file, ds=None):
         dtypes=4 * [float],
     )
     ds, ln = read_param_line(ds, ["NSTAE"], f15_file, ln=ln, dtypes=[float])
+    print(ds.attrs["NSTAE"])
     df = pd.read_csv(
         f15_file,
         skiprows=ln - 1,
@@ -1148,11 +1088,11 @@ def write_fort14(ds, f14_file):
 
 def write_fort15(ds, f15_file):
     """write_fort15.
-  Reads in ADCIRC fort.15 f15_file
+  Writes out an ADCIRC fort.15 f15_file
 
   :param f15_file: Path to Python file.
   """
-    with open(f15_file, "w") as f15:
+    with open_paramfile(f15_file) as f15:
         write_text_line(ds, "RUNDES", f15)
         write_text_line(ds, "RUNID", f15)
 
@@ -1539,8 +1479,57 @@ def process_adcirc_configs(path, filt="fort.*", met_times=[]):
     return ds
 
 
-P_CONFIGS = pull_param_configs()
+#P_CONFIGS = pull_param_configs()
 
+def getlines(fname):
+  with open(fname, "r") as fp: return fp.readlines()
+
+def writelines(fname, lines):
+  with open_paramfile(fname) as fp: fp.writelines(lines)
+
+def open_paramfile(fname):
+  """Safely open paramfile for writing - removing a symlink if one exists.
+  """
+
+  # Handle symlinks appropriately
+  if os.path.islink(fname):
+    os.unlink(fname)
+  return open(fname, "w")
+
+def set_swan_params(fname, start_date, last_date, tstep=1200):
+  """Set dates and timestep in SWAN control file.
+
+  Args:
+    fname (str) - input file name - will be overwritten
+    start_date (datetime.datetime) - starting date
+    last_date (dateimime.datetime - The last date in the forcing data.
+     Even if the simulation doesn't go that far, the 
+     COMPUTE line in fort.26 needs to use the last date from the fort.22 file.
+  """
+
+  lines = getlines(fname)
+  # support only hours for now
+  fmt = "%Y%m%d.%H0000"
+  start_str = start_date.strftime(fmt)
+  last_str = last_date.strftime(fmt)
+  new_lines = []
+  for i in range(len(lines)):
+    l = lines[i]
+    if "INIT HOTSTART" in l+lines[i-1]: continue
+    if " SEC " in l:
+      parts = l.split(" ")
+      ind = parts.index("SEC")
+      parts[ind-1] = str(tstep)
+      if "COMPUTE" in l:
+        parts[ind-2], parts[ind+1] = start_str, last_str
+      else:
+        parts[ind-2], parts[ind+1] = start_str, last_str
+      new_lines.append(" ".join(parts)+"\n")
+    elif "WTIMINC" in l:
+      new_lines.append("'WTIMINC Line in ADCIRC fort.15 " + start_date.strftime("%Y %m %d %H 1 0.9 1 ") + str(tstep)+"'\n")
+    else:
+      new_lines.append(l)
+  writelines(fname, new_lines)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
