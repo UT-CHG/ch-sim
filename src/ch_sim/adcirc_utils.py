@@ -163,6 +163,19 @@ def get_latest_ts(path: str):
             return ts
     raise Exception("adcirc.log found but time stepping hasn't started yet.")
 
+def snatch_fort14_params(fname):
+    """Read a few key parameters from the fort.14 file - not the actual mesh
+    """
+
+    res = {}
+    with open(fname, "r") as fp:
+        fp.readline()
+        res["NE"], res["NP"] = map(int, fp.readline().strip().split())
+        for i in range(res["NE"] + res["NP"]): fp.readline()
+        res["NOPE"] = int(fp.readline().split()[0])
+        res["NETA"] = int(fp.readline().split()[0])
+
+    return res
 
 def read_fort14(f14_file, ds=None):
     """read_fort14.
@@ -310,7 +323,6 @@ def read_fort14(f14_file, ds=None):
     )
 
     return ds
-
 
 def read_fort15(f15_file, ds=None):
     """read_fort15.

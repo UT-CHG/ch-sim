@@ -1,0 +1,195 @@
+
+RUNDES
+
+RUNID
+
+NFOVER
+
+NABOUT
+
+NSCREEN
+
+IHOT
+
+ICS
+
+IM
+
+IDEN include this line only if IM = 21
+
+NOLIBF
+
+NOLIFA
+
+NOLICA
+
+NOLICAT
+
+NWP
+
+for j=1 to NWP
+
+AttrName(j)
+
+end j loop
+
+NCOR
+
+NTIP
+
+NWS (Simplified table of values)
+
+NRAMP
+
+G
+
+TAU0
+
+Tau0FullDomainMin, Tau0FullDomainMax – inclued this line only if TAU0 is -5.0.
+
+DTDP
+
+STATIM
+
+REFTIM
+
+WTIMINC – Supplemental Meteorological/Wave/Ice Parameters Line
+
+RNDAY
+
+DRAMP – include this line if NRAMP = 0 or 1
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime – include this line if NRAMP = 2
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime, DRAMPIntFlux – include this line if NRAMP = 3
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime, DRAMPIntFlux, DRAMPElev – include this line if NRAMP = 4
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime, DRAMPIntFlux, DRAMPElev, DRAMPTip – include this line if NRAMP = 5
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime, DRAMPIntFlux, DRAMPElev, DRAMPTip, DRAMPMete – include this line if NRAMP = 6
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime, DRAMPIntFlux, DRAMPElev, DRAMPTip, DRAMPMete, DRAMPWRad – include this line if NRAMP = 7
+
+DRAMP, DRAMPExtFlux, FluxSettlingTime, DRAMPIntFlux, DRAMPElev, DRAMPTip, DRAMPMete, DRAMPWRad,DUnRampMete – include this line if NRAMP = 8
+
+A00, B00, C00
+
+H0 – include this line if NOLIFA =0, 1
+
+H0, INTEGER, INTEGER, VELMIN – include this line if NOLIFA =2, 3
+
+SLAM0, SFEA0
+
+TAU include this line only if NOLIBF = 0
+
+CF – include this line only if NOLIBF =1
+
+CF, HBREAK, FTHETA, FGAMMA – include this line only if NOLIBF =2
+
+ESLM – include this line only if IM =0, 1, 2
+
+ESLM, ESLC – include this line only if IM =10
+
+CORI
+
+NTIF
+
+for k=1 to NTIF
+
+TIPOTAG(k)
+
+TPK(k), AMIGT(k), ETRF(k), FFT(k), FACET(k)
+
+end k loop
+
+NBFR
+
+for k=1 to NBFR
+
+BOUNTAG(k)
+
+AMIG(k), FF(k), FACE(k)
+
+end k loop
+
+for k=1 to NBFR
+
+ALPHA(k)
+
+for j=1 to NETA
+
+EMO(k,j), EFA(k,j)
+
+end j loop
+
+end k loop
+
+ANGINN
+
+
+NOUTE, TOUTSE, TOUTFE, NSPOOLE
+
+NSTAE
+
+for k=1 to NSTAE
+
+XEL(k), YEL(k)
+
+end k loop
+
+NOUTV, TOUTSV, TOUTFV,NSPOOLV
+
+NSTAV
+
+for k=1 to NSTAV
+
+XEV(k), YEV(k)
+
+end k loop
+
+NOUTC, TOUTSC, TOUTFC, NSPOOLC – include this line only if IM =10
+
+NSTAC – include this line only if IM =10
+
+for k=1 to NSTAC
+
+XEC(k), YEC(k)
+
+end k loop
+
+NOUTM, TOUTSM, TOUTFM, NSPOOLM – include this line only if NWS is not equal to zero.
+
+NSTAM – include this line only if NWS is not equal to zero.
+
+for k=1 to NSTAM
+
+XEM(k), YEM(k)
+
+end k loop
+
+NOUTGE, TOUTSGE, TOUTFGE, NSPOOLGE
+
+NOUTGV, TOUTSGV, TOUTFGV, NSPOOLGV
+
+NOUTGC, TOUTSGC, TOUTFGC, NSPOOLGC – include this line only if IM =10
+
+NOUTGW, TOUTSGW, TOUTFGW, NSPOOLGW – include this line only if NWS is not equal to zero.
+
+NFREQ
+
+for k=1 to NFREQ
+
+NAMEFR(k)
+
+HAFREQ(k), HAFF(k), HAFACE(k)
+
+end k loop
+
+THAS, THAF, NHAINC, FMV
+
+NHASE, NHASV, NHAGE, NHAGV
+
+NHSTAR, NHSINC
+
+ITITER, ISLDIA, CONVCR, ITMAX
