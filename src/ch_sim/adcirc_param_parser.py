@@ -2,6 +2,39 @@ import os
 import numpy as np
 import re
 
+class ParsingInstruction:
+
+    def __init__(self, params=None, condition=None, instructions=None, bound=None):
+        """Parsing instruction for ADCIRC input parameter file
+
+        Args:
+            params - a list of parameter names. Provided for all but loop instructions.
+            condition - a Condition that determines whether or not the instruction is executed.
+            instructions (list of ParsingInstructions) - content of a loop if this is a loop.
+            bound str - the parameter name indicating the loop bound.
+        """
+
+        if params is None and instructions is None:
+            raise ValueError("Must either provide params or loop information!")
+
+        self.loop = instructions is not None
+        self.bound = bound
+        self.params, self.condition = params, condition
+
+        if self.loop:
+            self.instructions = []
+            for i in instructions:
+                if isinstance(i, ParsingInstruction): self.instructions.append(i)
+                else:
+                    # assume a dictionary data format
+                    self.instructions.append(ParsingInstruction(**i))
+
+    def key(self):
+        return tuple(self.params)
+
+    def comment(self):
+        return ", ".join(self.params)
+
 class ParamParser():
     """A class for parsing generic ADCIRC parameter files
     """
@@ -16,7 +49,7 @@ class ParamParser():
                 For example, NETA is found in the fort.14 file, and is required to parse the fort.15 file.
         """
 
-        self.instructions = instructions
+        self.instructions = [i if isinstance(i, ParsingInstruction) else ParsingInstruction(**i) for i in instructions]
         self.starting_params = starting_params
  
     def parse(self, fname, strict=False):
@@ -41,7 +74,7 @@ class ParamParser():
             self.lines = [l.strip() for l in f.readlines()]
 
         for i in self.instructions:
-            self._handle_instruction(i)
+            self._parse_instruction(i)
 
         self.trailing_lines = self.lines[self.ln:]
 
@@ -60,17 +93,21 @@ class ParamParser():
         return l.strip(), None
         
 
-    def _handle_instruction(self, i):
-        # single param
+    def _parse_instruction(self, i):
+        """Execute one parsing instruction (for reading)
+        """
 
-        if type(i) in [list, tuple]:
-            if len(i) == 1:
+        if i.loop:
+            self._handle_loop(i)
+        else:
+            if not self._check_condition(i): return
+            params = i.params
+            l, self.comments[i.key()] = self.getline()
+            if len(params) == 1:
                 # For single parameters we don't care if there are spaces in the line
-                self.data[i[0]], self.comments[i[0]] = self.getline()
+                self.data[params[0]] = l
                 return
 
-            params = i
-            l, self.comments[tuple(i)] = self.getline()
             parts = l.split()
             if self.strict and len(parts) != len(params):
                 raise ValueError(f"Expected to find the params {i} in the line '{l}'! "
@@ -82,17 +119,8 @@ class ParamParser():
             for param, val in zip(params, parts):
                 self.data[param] = val
 
-        # dict - general case
-        elif type(i) is dict:
-            if not self._check_condition(i): return
-            if self._is_loop(i):
-                self._handle_loop(i)
-            else:
-                # assume it is either a single parameter or a group of them
-                self._handle_instruction(i["params"])
-
-    def _check_condition(self, i):
-        cond = i.get("condition")
+    def _check_condition(self, instruction):
+        cond = instruction.condition
         if cond is None: return True
         val = self.data[cond["param"]]
         allowed = cond["allowed"]
@@ -104,7 +132,7 @@ class ParamParser():
         finally:
             if val in allowed: return True
             else:
-                for p in i["params"]:
+                for p in instruction.params:
                     self.skipped_params.add(p)
                 return False
 
@@ -115,7 +143,7 @@ class ParamParser():
         """Preprocess a loop instruction and allocate arrays
         """
 
-        bound_param = loop["bound"]
+        bound_param = loop.bound
         bound = self.data.get(bound_param, None)
         if bound is None:
             # we don't have the bound because it was skipped by a condition
@@ -130,27 +158,21 @@ class ParamParser():
         shape += (bound,)
         num_iteration_lines = 0
         active_instructions = []
-        for i in loop["instructions"]:
-            if type(i) is dict:
-                if not self._check_condition(i): continue
-                if self._is_loop(i):
-                    active_instructions.append(self._prep_loop(i, shape))
-                    continue
-                else:
-                    params = i['params']
-            else:
-                params = i
-            if type(params) is str: params = [params]
+        for i in loop.instructions:
+            if i.loop:
+                active_instructions.append(self._prep_loop(i, shape))
+                continue
+            elif not self._check_condition(i): continue
 
-            for p in params:
-                if len(shape) == 1 and len(params) == 1:
+            for p in i.params:
+                if len(shape) == 1 and len(i.params) == 1:
                     # allow for general data (i.e, strings)
                     self.data[p] = np.array([None]*bound)
                 else:
                     # Enforce floating point data
                     self.data[p] = np.zeros(shape)
 
-            active_instructions.append(params)
+            active_instructions.append(i.params)
 
         return {"bound": bound, "instructions": active_instructions}
 
@@ -180,6 +202,26 @@ class ParamParser():
 
         self._execute_loop(prepped_loop)
 
+    def dump(self, fname, data = None):
+        if data is not None:
+            self.data = data
+
+        lines = []
+        for i in self.instructions:
+            if i.loop:
+                pass
+            else:
+                if not self._check_condition(i): continue
+                line = " ".join([str(self.data[p]) for p in i.params])
+                k = i.key()
+                if k in self.comments:
+                    line += " ! " + self.comments[k]
+                else:
+                    line += "! " + i.comment()
+                lines.append(line)
+
+        print(lines)
+
 class InstructionParser:
 
     def __init__(self, fname):
@@ -197,7 +239,7 @@ class InstructionParser:
                 if not len(l): continue
                 if l.startswith("for"):
                     bound = l.split("to")[-1].strip()
-                    loop_stack.append({"loop": True, "bound": bound, "instructions": []})
+                    loop_stack.append({"bound": bound, "instructions": []})
                     loop_cnt += 1
                     continue
                 elif l.startswith("end"):
@@ -232,7 +274,7 @@ class InstructionParser:
             else:
                 params.append(p)
 
-        return params
+        return {"params": params}
 
     def _parse_condition(self, text):
 

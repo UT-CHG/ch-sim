@@ -25,4 +25,5 @@ def test_param_parser():
 
     assert int(params["NSPOOLGW"]) == 7200
     print(parser.data)
+    parser.dump("tmp.out")
     assert False
