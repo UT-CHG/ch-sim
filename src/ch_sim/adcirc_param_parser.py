@@ -69,6 +69,8 @@ class ParamParser():
         self.skipped_params = set()
         self.ln = 0
         self.strict = strict
+        # oarsing as opposed to dumnping
+        self.parsing=True
 
         with open(fname, "r") as f:
             self.lines = [l.strip() for l in f.readlines()]
@@ -76,7 +78,7 @@ class ParamParser():
         for i in self.instructions:
             self._parse_instruction(i)
 
-        self.trailing_lines = self.lines[self.ln:]
+        self.data['_trailing_lines'] = self.lines[self.ln:]
 
         return self.data
 
@@ -136,11 +138,8 @@ class ParamParser():
                     self.skipped_params.add(p)
                 return False
 
-    def _is_loop(self, i):
-        return i.get("loop") == True
-
     def _prep_loop(self, loop, shape=()):
-        """Preprocess a loop instruction and allocate arrays
+        """Preprocess a loop instruction and allocate arrays if needed
         """
 
         bound_param = loop.bound
@@ -165,6 +164,13 @@ class ParamParser():
             elif not self._check_condition(i): continue
 
             for p in i.params:
+                if not self.parsing:
+                    if p not in self.data:
+                        raise ValueError(f"Missing required array '{p}' in data.")
+                    elif self.data[p].shape != shape:
+                        raise ValueError(f"Shape mismatch - expected shape of {shape} for variable "
+                            f" '{p}', got {self.data[p].shape}")
+                    continue
                 if len(shape) == 1 and len(i.params) == 1:
                     # allow for general data (i.e, strings)
                     self.data[p] = np.array([None]*bound)
@@ -186,16 +192,21 @@ class ParamParser():
                 if type(instruction) is dict:
                     self._execute_loop(instruction, iteration_inds)
                     continue
-                l, comment = self.getline()
                 params = instruction
-                # string data (potentially)
-                if len(params) == 1 and not len(inds):
-                    self.data[params[0]][iteration_inds] = l
-                else:
-                    for param, val in zip(params, map(float, l.split())):
-                       self.data[param][iteration_inds] = val
 
-    def _handle_loop(self, loop):
+                if self.parsing:
+                    l, comment = self.getline()
+                    # string data (potentially)
+                    if len(params) == 1 and not len(inds):
+                        self.data[params[0]][iteration_inds] = l
+                    else:
+                        for param, val in zip(params, map(float, l.split())):
+                           self.data[param][iteration_inds] = val
+                else:
+                    # dumping
+                    self.writeline(" ".join([str(self.data[param][iteration_inds]) for param in params]))
+
+    def _handle_loop(self, loop, parse=True):
         """Parse an array of data (potentially nested)
         """
         prepped_loop = self._prep_loop(loop)
@@ -206,10 +217,13 @@ class ParamParser():
         if data is not None:
             self.data = data
 
-        lines = []
+        self.lines = []
+        # We are in dumping mode, not parsing mode
+        self.parsing = False
+
         for i in self.instructions:
             if i.loop:
-                pass
+                self._handle_loop(i)
             else:
                 if not self._check_condition(i): continue
                 line = " ".join([str(self.data[p]) for p in i.params])
@@ -218,9 +232,18 @@ class ParamParser():
                     line += " ! " + self.comments[k]
                 else:
                     line += "! " + i.comment()
-                lines.append(line)
 
-        print(lines)
+                self.writeline(line)
+
+        for l in self.data.get('_trailing_lines', []):
+            self.writeline(l)
+
+        with open(fname, "w") as fp:
+            fp.writelines(self.lines)
+
+    def writeline(self, l):
+        # Ensure there is a newline at the end
+        self.lines.append(l.strip() + "\n")
 
 class InstructionParser:
 
