@@ -15,7 +15,8 @@ from functools import reduce
 from geopy.distance import distance
 from time import perf_counter, sleep
 from contextlib import contextmanager
-
+from .parsing_instructions import fort15_instructions
+from .adcirc_param_parser import ParamParser
 
 P_CONFIGS = {}
 pd.options.display.float_format = "{:,.10f}".format
@@ -326,401 +327,29 @@ def read_fort14(f14_file, ds=None):
 
 def read_fort15(f15_file, ds=None):
     """read_fort15.
-  Reads in ADCIRC fort.15 f15_file
+    Reads in ADCIRC fort.15 f15_file
 
-  :param f15_file: Path to Python file.
-  """
-    if type(ds) != xr.Dataset:
-        ds = xr.Dataset()
+    Args:
+        f15_file (str) - Path to parameter file.
+        ds (dict) - a dictionary with parameter data
+    """
 
-    ds, ln = read_text_line(ds, "RUNDES", f15_file, ln=1)
-    ds, ln = read_text_line(ds, "RUNID", f15_file, ln=ln)
+    if ds is None:
+        ds = {}
 
-    for i, p in enumerate(["NFOVER", "NABOUT", "NSCREEN", "IHOT", "ICS", "IM"]):
-        ds, ln = read_param_line(ds, [p], f15_file, ln=ln, dtypes=[int])
+    if "NETA" not in ds:
+        # we need NETA in order to parse the fort15 file
+        # Try to find the fort.14 file
+        dirname = os.path.dirname(f15_file)
+        f14_file = dirname + "/fort.14"
+        if os.path.exists(f14_file):
+            ds.update(snatch_fort14_params(f14_file))
+        else:
+            raise ValueError("NETA must be provided in order to parse the fort.15 file!"
+                f"Tried and failed to find the fort.14 file in the directory '{dirname}'!")
 
-    if ds.attrs["IM"] in [21, 31]:
-        ds, ln = read_param_line(ds, ["IDEN"], f15_file, ln=ln, dtypes=[int])
-
-    for i, p in enumerate(["NOLIBF", "NOLIFA", "NOLICA", "NOLICAT", "NWP"]):
-        ds, ln = read_param_line(ds, [p], f15_file, ln=ln, dtypes=[int])
-
-    nodals = []
-    # Nodal Attributes
-    for i in range(ds.attrs["NWP"]):
-        line = lc.getline(f15_file, ln).strip()
-        logger.info("Nodal Attribute: " + str(i) + " - " + line)
-        nodals.append(line)
-        ln += 1
-    ds = ds.assign({"NODAL_ATTRS": nodals})
-
-    for i, p in enumerate(["NCOR", "NTIP", "NWS", "NRAMP"]):
-        ds, ln = read_param_line(ds, [p], f15_file, ln=ln, dtypes=[int])
-
-    for i, p in enumerate(["G", "TAU0"]):
-        ds, ln = read_param_line(ds, [p], f15_file, ln=ln, dtypes=[float])
-
-    if ds.attrs["TAU0"] == -5.0:
-        ds, ln = read_param_line(
-            ds,
-            ["TAU0_FullDomain_Min", "TAU0_FullDomain_Max"],
-            f15_file,
-            ln=ln,
-            dtypes=2 * [float],
-        )
-
-    for i, p in enumerate(["DTDP", "STATIM", "REFTIM", "WTIMINC ", "RNDAY"]):
-        ds, ln = read_param_line(ds, [p], f15_file, ln=ln, dtypes=[int])
-
-
-    ramp_params = [
-             	"DRAMP",
-                "DRAMPExtFlux",
-                "FluxSettlingTime",
-                "DRAMPIntFlux",
-                "DRAMPElev",
-                "DRAMPTip",
-                "DRAMPMete",
-                "DRAMPWRad",
-                "DUnRampMete",
-    ]
-
-    if ds.attrs["NRAMP"] in [0, 1]:
-        ds, ln = read_param_line(ds, ["DRAMP"], f15_file, ln=ln, dtypes=[int])
-    elif ds.attrs["NRAMP"] >= 2:
-        ds, ln = read_param_line(
-            ds, ramp_params[:ds.attrs["NRAMP"]+1], f15_file, ln=ln
-        )
-
-    ds, ln = read_param_line(
-        ds, ["A00", "B00", "C00"], f15_file, ln=ln, dtypes=3 * [float]
-    )
-
-    nolifa = int(ds.attrs["NOLIFA"])
-    if nolifa in [0, 1]:
-        ds, ln = read_param_line(ds, ["H0"], f15_file, ln=ln, dtypes=[float])
-    elif nolifa in [2, 3]:
-        ds, ln = read_param_line(
-            ds,
-            ["H0", "NODEDRYMIN", "NODEWETMIN", "VELMIN"],
-            f15_file,
-            ln=ln,
-            dtypes=4 * [float],
-        )
-
-    ds, ln = read_param_line(
-        ds, ["SLAM0", "SFEA0"], f15_file, ln=ln, dtypes=2 * [float]
-    )
-
-    nolibf = int(ds.attrs["NOLIBF"])
-    if nolibf == 0:
-        ds, ln = read_param_line(ds, ["TAU"], f15_file, ln=ln, dtypes=[float])
-    elif nolibf == 1:
-        ds, ln = read_param_line(ds, ["CF"], f15_file, ln=ln, dtypes=[float])
-    elif nolibf == 2:
-        ds, ln = read_param_line(
-            ds,
-            ["CF", "HBREAK", "FTHETA", "FGAMMA"],
-            f15_file,
-            ln=ln,
-            dtypes=4 * [float],
-        )
-    elif nolibf == 3:
-        ds, ln = read_param_line(
-            ds, ["CF", "HBREAK", "FTHETA"], f15_file, ln=ln, dtypes=3 * [float]
-        )
-
-    if ds.attrs["IM"] != "10":
-        ds, ln = read_param_line(ds, ["ESLM"], f15_file, ln=ln, dtypes=[float])
-    else:
-        ds, ln = read_param_line(
-            ds, ["ESLM", "ESLC"], f15_file, ln=ln, dtypes=2 * [float]
-        )
-
-    ds, ln = read_param_line(ds, ["CORI"], f15_file, ln=ln, dtypes=[float])
-    ds, ln = read_param_line(ds, ["NTIF"], f15_file, ln=ln, dtypes=[int])
-
-    tides = []
-    for i in range(ds.attrs["NTIF"]):
-        tc = xr.Dataset()
-        tc, ln = read_param_line(tc, ["TIPOTAG"], f15_file, ln=ln)
-        tc, ln = read_param_line(
-            tc,
-            ["TPK", "AMIGT", "ETRF", "FFT", "FACET"],
-            f15_file,
-            ln=ln,
-            dtypes=5 * [float],
-        )
-        tides.append(tc.attrs)
-
-    if len(tides):
-      ds = xr.merge(
-          [ds, pd.DataFrame(tides).set_index("TIPOTAG").to_xarray()],
-          combine_attrs="override",
-      )
-
-    ds, ln = read_param_line(ds, ["NBFR"], f15_file, ln=ln, dtypes=[int])
-    print("NBFR", ds.attrs["NBFR"])
-    # Tidal forcing frequencies on elevation specified boundaries
-    tides_elev = []
-    for i in range(ds.attrs["NBFR"]):
-        temp = xr.Dataset()
-        temp, ln = read_param_line(temp, ["BOUNTAG"], f15_file, ln=ln)
-        temp, ln = read_param_line(
-            temp, ["AMIG", "FF", "FACE"], f15_file, ln=ln, dtypes=3 * [float]
-        )
-        tides_elev.append(temp.attrs)
-    ds = xr.merge(
-        [ds, pd.DataFrame(tides_elev).set_index("BOUNTAG").to_xarray()],
-        combine_attrs="override",
-    )
-
-    # Harmonic forcing function specification at elevation sepcified boundaries
-    force_elev = pd.read_csv(
-        f15_file,
-        skiprows=ln,
-        names=["EMO", "EFA"],
-        delim_whitespace=True,
-        header=None,
-        low_memory=False,
-    )
-    idxs = force_elev[
-        force_elev["EFA"].isnull() | force_elev["EFA"].str.contains("!")
-    ].index.tolist()
-    force_elev["ALPHA"] = np.nan
-    temp, _ = read_param_line(xr.Dataset(), ["NAME"], f15_file, ln=ln)
-    force_elev.loc[0 : idxs[0], "ALPHA"] = temp.attrs["NAME"]
-    for i in range(ds.attrs["NBFR"] - 1):
-        force_elev.loc[idxs[i] : idxs[i + 1], "ALPHA"] = force_elev.loc[idxs[i], "EMO"]
-    force_elev = force_elev.drop(
-        idxs[: i + 1] + list(range(idxs[i + 1], force_elev.shape[0]))
-    )
-    force_elev["EMO"] = force_elev["EMO"].astype(float)
-    force_elev["EFA"] = force_elev["EFA"].astype(float)
-    ln = ln + force_elev.shape[0] + ds.attrs["NBFR"]
-    ds = xr.merge(
-        [ds, force_elev.set_index("ALPHA").to_xarray()], combine_attrs="override"
-    )
-
-    # ANGINN
-    ds, ln = read_param_line(ds, ["ANGINN"], f15_file, ln=ln, dtypes=[float])
-    print(ds.attrs["ANGINN"], ln)
-    # TODO: Handle cases with tidal forcing frequencies on normal flow external boundaries
-    # if not set([int(x['IBTYPE']) for x in info['NBOU_BOUNDS']]).isdisjoint([2, 12, 22, 32, 52]):
-    #   msg = "Tidal forcing frequencies on normal flow extrnal boundaries not implemented yet"
-    #   logger.error(msg)
-    #   raise Exception(msg)
-    # info = read_param_line(info, ['NFFR'], f15_file)
-
-    # Tidal forcing frequencies on normal flow  external boundar condition
-    # info['TIDES_NORMAL'] = []
-    # for i in range(int(info['NBFR'])):
-    #   temp = {}
-    #   temp = read_param_line(temp, ['FBOUNTAG'], f15_file)
-    #   temp = read_param_line(temp, ['FAMIG', 'FFF', 'FFACE'], f15_file)
-    #   info['TIDES_NORMAL'].append(temp)
-
-    # info['FORCE_NORMAL'] = []
-    # for i in range(int(info['NBFR'])):
-    #   temp = {}
-    #   temp = read_param_line(temp, ['ALPHA'], f15_file)
-    #   in_set = not set([int(x['IBTYPE']) for x in info['NBOU_BOUNDS']]).isdisjoint(
-    #           [2, 12, 22, 32])
-    #   sz = 2 if in_set else 4
-    #   temp['VALS'] =  np.empty((int(info['NVEL']), sz), dtype=float)
-    #   for j in range(int(info['NVEL'])):
-    #     temp['VALS'][j] = read_numeric_line(f15_file, float)
-    #   info['FORCE_NORMAL'].append(temp)
-
-    ds, ln = read_param_line(
-        ds,
-        ["NOUTE", "TOUTSE", "TOUTFE", "NSPOOLE"],
-        f15_file,
-        ln=ln,
-        dtypes=4 * [float],
-    )
-    ds, ln = read_param_line(ds, ["NSTAE"], f15_file, ln=ln, dtypes=[float])
-    print(ds.attrs["NSTAE"])
-    df = pd.read_csv(
-        f15_file,
-        skiprows=ln - 1,
-        nrows=int(ds.attrs["NSTAE"]),
-        delim_whitespace=True,
-        header=None,
-        names=["XEL", "YEL"],
-        usecols=["XEL", "YEL"],
-    )
-    df.index.name = "STATIONS"
-    df["XEL"] = df["XEL"].astype(float)
-    df["YEL"] = df["YEL"].astype(float)
-    ds = xr.merge([ds, df.to_xarray()], combine_attrs="override")
-    ln += int(ds.attrs["NSTAE"])
-
-    ds, ln = read_param_line(
-        ds,
-        ["NOUTV", "TOUTSV", "TOUTFV", "NSPOOLV"],
-        f15_file,
-        ln=ln,
-        dtypes=4 * [float],
-    )
-    ds, ln = read_param_line(ds, ["NSTAV"], f15_file, ln=ln, dtypes=[float])
-    df = pd.read_csv(
-        f15_file,
-        skiprows=ln - 1,
-        nrows=int(ds.attrs["NSTAV"]),
-        delim_whitespace=True,
-        header=None,
-        names=["XEV", "YEV"],
-        usecols=["XEV", "YEV"],
-    )
-    df.index.name = "STATIONS_VEL"
-    df["XEV"] = df["XEV"].astype(float)
-    df["YEV"] = df["YEV"].astype(float)
-    ds = xr.merge([ds, df.to_xarray()], combine_attrs="override")
-    ln += int(ds.attrs["NSTAV"])
-
-    if ds.attrs["IM"] == 10:
-        ds, ln = read_param_line(
-            ds,
-            ["NOUTC", "TOUTSC", "TOUTFC", "NSPOOLC"],
-            f15_file,
-            ln=ln,
-            dtypes=4 * [float],
-        )
-        ds, ln = read_param_line(ds, ["NSTAC"], f15_file, ln=ln, dtypes=[float])
-        df = pd.read_csv(
-            f15_file,
-            skiprows=ln - 1,
-            nrows=int(ds.attrs["NSTAC"]),
-            delim_whitespace=True,
-            header=None,
-            names=["XEC", "YEC"],
-            usecols=["XEC", "YEC"],
-        )
-        df.index.name = "STATIONS_CONC"
-        df["XEV"] = df["XEV"].astype(float)
-        df["YEV"] = df["YEV"].astype(float)
-        ds = xr.merge([ds, df.to_xarray()], combine_attrs="override")
-        ln += int(ds.attrs["NSTAC"])
-
-    if ds.attrs["NWS"] != 0:
-        ds, ln = read_param_line(
-            ds,
-            ["NOUTM", "TOUTSM", "TOUTFM", "NSPOOLM"],
-            f15_file,
-            ln=ln,
-            dtypes=4 * [float],
-        )
-        ds, ln = read_param_line(ds, ["NSTAM"], f15_file, ln=ln, dtypes=[float])
-        df = pd.read_csv(
-            f15_file,
-            skiprows=ln - 1,
-            nrows=int(ds.attrs["NSTAM"]),
-            delim_whitespace=True,
-            header=None,
-            names=["XEM", "YEM"],
-            usecols=["XEM", "YEM"],
-        )
-        df.index.name = "STATIONS_MET"
-        df["XEM"] = df["XEM"].astype(float)
-        df["YEM"] = df["YEM"].astype(float)
-        ds = xr.merge([ds, df.to_xarray()], combine_attrs="override")
-        ln += int(ds.attrs["NSTAM"])
-
-    ds, ln = read_param_line(
-        ds,
-        ["NOUTGE", "TOUTSGE", "TOUTFGE", "NSPOOLGE"],
-        f15_file,
-        ln=ln,
-        dtypes=4 * [float],
-    )
-    ds, ln = read_param_line(
-        ds,
-        ["NOUTGV", "TOUTSGV", "TOUTFGV", "NSPOOLGV"],
-        f15_file,
-        ln=ln,
-        dtypes=4 * [float],
-    )
-    if ds.attrs["IM"] == "10":
-        ds, ln = read_param_line(
-            ds,
-            ["NOUTGC", "TOUTSGC", "TOUTFGC", "NSPOOLGC"],
-            f15_file,
-            ln=ln,
-            dtypes=4 * [float],
-        )
-    if float(ds.attrs["NWS"]) != 0:
-        ds, ln = read_param_line(
-            ds,
-            ["NOUTGW", "TOUTSGW", "TOUTFGW", "NSPOOLGW"],
-            f15_file,
-            ln=ln,
-            dtypes=4 * [float],
-        )
-
-    harmonic_analysis = []
-    ds, ln = read_param_line(ds, ["NFREQ"], f15_file, ln=ln, dtypes=[int])
-    if ds.attrs["NFREQ"] > 0:
-        for i in range(ds.attrs["NFREQ"]):
-            tmp = xr.Dataset()
-            tmp, ln = read_param_line(tmp, ["NAMEFR"], f15_file, ln=ln)
-            tmp, ln = read_param_line(
-                tmp, ["HAFREQ", "HAFF", "HAFACE"], f15_file, ln=ln, dtypes=3 * [float]
-            )
-            harmonic_analysis.append(tmp.attrs)
-        ds = xr.merge(
-            [ds, pd.DataFrame(harmonic_analysis).set_index("NAMEFR").to_xarray()],
-            combine_attrs="override",
-        )
-
-    ds, ln = read_param_line(
-        ds, ["THAS", "THAF", "NHAINC", "FMV"], f15_file, ln=ln, dtypes=4 * [float]
-    )
-    ds, ln = read_param_line(
-        ds, ["NHASE", "NHASV", "NHAGE", "NHAGV"], f15_file, ln=ln, dtypes=4 * [float]
-    )
-    ds, ln = read_param_line(
-        ds, ["NHSTAR", "NHSINC"], f15_file, ln=ln, dtypes=2 * [float]
-    )
-    ds, ln = read_param_line(
-        ds, ["ITITER", "ISLDIA", "CONVCR", "ITMAX"], f15_file, ln=ln, dtypes=4 * [float]
-    )
-
-    # Note - fort.15 files configured for 3D runs not supported yet
-    if int(ds.attrs["IM"]) in [1, 2, 11, 21, 31]:
-        msg = "fort.15 files configured for 3D runs not supported yet."
-        logger.error(msg)
-        raise Exception(msg)
-    elif ds.attrs["IM"] == 6:
-        if ds.attrs["IM"][0] == 1:
-            msg = "fort.15 files configured for 3D runs not supported yet."
-            logger.error(msg)
-            raise Exception(msg)
-
-    # Last 10 fields before control list is netcdf params
-    for p in [
-        "NCPROJ",
-        "NCINST",
-        "NCSOUR",
-        "NCHIST",
-        "NCREF",
-        "NCCOM",
-        "NCHOST",
-        "NCCONV",
-        "NCCONT",
-        "NCDATE",
-    ]:
-        ds, ln = read_text_line(ds, p, f15_file, ln=ln)
-
-    # At the very bottom is the control list. Don't parse this as of now
-    ds.attrs["CONTROL_LIST"] = []
-    line = lc.getline(f15_file, ln)
-    while line != "":
-        ds.attrs["CONTROL_LIST"].append(line.strip())
-        ln += 1
-        line = lc.getline(f15_file, ln)
-
-    return ds
+    parser = ParamParser(fort15_instructions)
+    return parser.parse(f15_file, starting_params=ds)
 
 
 def read_fort13(f13_file, ds=None):
@@ -1100,278 +729,17 @@ def write_fort14(ds, f14_file):
 
 def write_fort15(ds, f15_file):
     """write_fort15.
-  Writes out an ADCIRC fort.15 f15_file
+    Writes out an ADCIRC fort.15 f15_file
 
-  :param f15_file: Path to Python file.
-  """
-    with open_paramfile(f15_file) as f15:
-        write_text_line(ds, "RUNDES", f15)
-        write_text_line(ds, "RUNID", f15)
+    Args:
+        ds (dict) - Dictionary of parameters
+        f15_file (str) - output filename
+    """
 
-        for i, p in enumerate(["NFOVER", "NABOUT", "NSCREEN", "IHOT", "ICS", "IM"]):
-            write_param_line(ds, [p], f15)
-
-        if int(ds.attrs["IM"]) in [21, 31]:
-            write_param_line(ds, ["IDEN"], f15)
-
-        for i, p in enumerate(["NOLIBF", "NOLIFA", "NOLICA", "NOLICAT", "NWP"]):
-            write_param_line(ds, [p], f15)
-
-        # Nodal Attributes
-        for nodal in ds["NODAL_ATTRS"].values:
-            f15.write(nodal + "\n")
-
-        for i, p in enumerate(["NCOR", "NTIP", "NWS", "NRAMP", "G", "TAU0"]):
-            write_param_line(ds, [p], f15)
-
-        if float(ds.attrs["TAU0"]) == -5.0:
-            write_param_line(ds, ["TAU0_FullDomain_Min", "TAU0_FullDomain_Max"], f15)
-
-        for i, p in enumerate(["DTDP", "STATIM", "REFTIM", "WTIMINC ", "RNDAY"]):
-            write_param_line(ds, [p], f15)
-
-        nramp = int(ds.attrs["NRAMP"])
-        if nramp in [0, 1]:
-            write_param_line(ds, ["DRAMP"], f15)
-        elif nramp == 2:
-            write_param_line(ds, ["DRAMP", "DRAMPExtFlux", "FluxSettlingTime"], f15)
-        elif nramp == 3:
-            write_param_line(
-                ds, ["DRAMP", "DRAMPExtFlux", "FluxSettlingTime", "DRAMPIntFlux"], f15
-            )
-        elif nramp == 4:
-            write_param_line(
-                ds,
-                [
-                    "DRAMP",
-                    "DRAMPExtFlux",
-                    "FluxSettlingTime",
-                    "DRAMPIntFlux",
-                    "DRAMPElev",
-                ],
-                f15,
-            )
-        elif nramp == 5:
-            write_param_line(
-                ds,
-                [
-                    "DRAMP",
-                    "DRAMPExtFlux",
-                    "FluxSettlingTime",
-                    "DRAMPIntFlux",
-                    "DRAMPElev",
-                    "DRAMPTip",
-                ],
-                f15,
-            )
-        elif nramp == 6:
-            write_param_line(
-                ds,
-                [
-                    "DRAMP",
-                    "DRAMPExtFlux",
-                    "FluxSettlingTime",
-                    "DRAMPIntFlux",
-                    "DRAMPElev",
-                    "DRAMPTip",
-                    "DRAMPMete",
-                ],
-                f15,
-            )
-        elif nramp == 7:
-            write_param_line(
-                ds,
-                [
-                    "DRAMP",
-                    "DRAMPExtFlux",
-                    "FluxSettlingTime",
-                    "DRAMPIntFlux",
-                    "DRAMPElev",
-                    "DRAMPTip",
-                    "DRAMPMete",
-                    "DRAMPWRad",
-                ],
-                f15,
-            )
-        elif nramp == 8:
-            write_param_line(
-                ds,
-                [
-                    "DRAMP",
-                    "DRAMPExtFlux",
-                    "FluxSettlingTime",
-                    "DRAMPIntFlux",
-                    "DRAMPElev",
-                    "DRAMPTip",
-                    "DRAMPMete",
-                    "DRAMPWRad",
-                    "DUnRampMete",
-                ],
-                f15,
-            )
-
-        write_param_line(ds, ["A00", "B00", "C00"], f15)
-
-        nolifa = ds.attrs["NOLIFA"]
-        if nolifa in [0, 1]:
-            write_param_line(ds, ["H0"], f15)
-        elif nolifa in [2, 3]:
-            write_param_line(ds, ["H0", "NODEDRYMIN", "NODEWETMIN", "VELMIN"], f15)
-
-        write_param_line(ds, ["SLAM0", "SFEA0"], f15)
-
-        if ds.attrs["NOLIBF"] == 0:
-            write_param_line(ds, ["TAU"], f15)
-        elif ds.attrs["NOLIBF"] == 1:
-            write_param_line(ds, ["CF"], f15)
-        elif ds.attrs["NOLIBF"] == 2:
-            write_param_line(ds, ["CF", "HBREAK", "FTHETA", "FGAMMA"], f15)
-        elif ds.attrs["NOLIBF"] == 3:
-            write_param_line(ds, ["CF", "HBREAK", "FTHETA"], f15)
-
-        if ds.attrs["IM"] != "10":
-            write_param_line(ds, ["ESLM"], f15)
-        else:
-            write_param_line(ds, ["ESLM", "ESLC"], f15)
-
-        for i, p in enumerate(["CORI", "NTIF"]):
-            write_param_line(ds, [p], f15)
-
-        params = ["TPK", "AMIGT", "ETRF", "FFT", "FACET"]
-        for name in [x for x in ds["TIPOTAG"].values]:
-            write_text_line(name, "TIPOTAG", f15)
-            write_param_line(
-                [ds[x].sel(TIPOTAG=name).item(0) for x in params], params, f15
-            )
-
-        write_param_line(ds, ["NBFR"], f15)
-
-        # Tidal forcing frequencies at elevation specified boundaries
-        params = ["AMIG", "FF", "FACE"]
-        for name in [x for x in ds["BOUNTAG"].values]:
-            write_text_line(name, "BOUNTAG", f15)
-            write_param_line(
-                [ds[x].sel(BOUNTAG=name).item(0) for x in params], params, f15
-            )
-
-    # Harmonic forcing function at elevation sepcified boundaries
-    # Cant use groupby because need to preserve order
-    params = ["EMO", "EFA"]
-
-    def uniq(seq):
-        seen = set()
-        return [x for x in seq if not (x in seen or seen.add(x))]
-
-    for name in uniq([x for x in ds["ALPHA"].values]):
-        with open(f15_file, "a") as f15:
-            write_text_line(name, "ALPHA", f15)
-        ds[params].sel(ALPHA=name).to_dataframe().to_csv(
-            f15_file, sep=" ", mode="a", header=False, index=False
-        )
-
-    with open(f15_file, "a") as f15:
-        # ANGINN
-        write_param_line(ds, ["ANGINN"], f15)
-
-        # TODO: Implement case when NBFR!=0
-        # if ds.attrs['IBTYPE'] in [2, 12, 22, 32, 52]:
-        #   write_param_line(ds, ['NFFR'], f15)
-
-        #   # Tidal forcing frequencies on normal flow  external boundar condition
-        #   for i in range(ds.attrs['NBFR']):
-        #     write_param_line(ds['TIDES_NORMAL'][i], ['FBOUNTAG'], f15)
-        #     write_param_line(ds['TIDES_NORMAL'][i], ['FAMIG', 'FFF', 'FFACE'], f15)
-
-        #   # Periodic normal flow/unit width amplitude
-        #   info['FORCE_NORMAL'] = []
-        #   for i in range(ds.attrs['NBFR']):
-        #     write_param_line(ds['FORCE_NORMAL'][i], ['ALPHA'], f15)
-        #     for j in range(ds.attrs['NVEL']):
-        #       write_numeric_line(ds['FORCE_NORMAL'][i]['VALS'], f15)
-
-        write_param_line(ds, ["NOUTE", "TOUTSE", "TOUTFE", "NSPOOLE"], f15)
-        write_param_line(ds, ["NSTAE"], f15)
-    if ds.attrs["NSTAE"] > 0:
-        ds[["STATIONS", "XEL", "YEL"]].to_dataframe().to_csv(
-            f15_file, sep=" ", mode="a", header=False, index=False
-        )
-
-    with open(f15_file, "a") as f15:
-        write_param_line(ds, ["NOUTV", "TOUTSV", "TOUTFV", "NSPOOLV"], f15)
-        write_param_line(ds, ["NSTAV"], f15)
-    if ds.attrs["NSTAV"] > 0:
-        ds[["STATIONS_VEL", "XEV", "YEV"]].to_dataframe().to_csv(
-            f15_file, sep=" ", mode="a", header=False, index=False
-        )
-
-    if ds.attrs["IM"] == 10:
-        with open(f15_file, "a") as f15:
-            write_param_line(ds, ["NOUTC", "TOUTSC", "TOUTFC", "NSPOOLC"], f15)
-            write_param_line(ds, ["NSTAC"], f15)
-        if ds.attrs["NSTAC"] > 0:
-            ds[["STATIONS_CONC", "XEC", "YEC"]].to_dataframe().to_csv(
-                f15_file, sep=" ", mode="a", header=False, index=False
-            )
-
-    if ds.attrs["NWS"] != 0:
-        with open(f15_file, "a") as f15:
-            write_param_line(ds, ["NOUTM", "TOUTSM", "TOUTFM", "NSPOOLM"], f15)
-            write_param_line(ds, ["NSTAM"], f15)
-        if ds.attrs["NSTAM"] > 0:
-            ds[["STATIONS_MET", "XEM", "YEM"]].to_dataframe().to_csv(
-                f15_file, sep=" ", mode="a", header=False, index=False
-            )
-
-    with open(f15_file, "a") as f15:
-        write_param_line(ds, ["NOUTGE", "TOUTSGE", "TOUTFGE", "NSPOOLGE"], f15)
-        write_param_line(ds, ["NOUTGV", "TOUTSGV", "TOUTFGV", "NSPOOLGV"], f15)
-
-        if ds.attrs["IM"] == 10:
-            write_param_line(ds, ["NOUTGC", "TOUTSGC", "TOUTFGC", "NSPOOLGC"], f15)
-        if ds.attrs["NWS"] != 0:
-            write_param_line(ds, ["NOUTGW", "TOUTSGW", "TOUTFGW", "NSPOOLGW"], f15)
-
-        write_param_line(ds, ["NFREQ"], f15)
-        params = ["HAFREQ", "HAFF", "HAFACE"]
-        for name in [x for x in ds["NAMEFR"].values]:
-            write_text_line(name, "NAMEFR", f15)
-            write_param_line(
-                [ds[x].sel(NAMEFR=name).item(0) for x in params], params, f15
-            )
-
-        write_param_line(ds, ["THAS", "THAF", "NHAINC", "FMV"], f15)
-        write_param_line(ds, ["NHASE", "NHASV", "NHAGE", "NHAGV"], f15)
-        write_param_line(ds, ["NHSTAR", "NHSINC"], f15)
-        write_param_line(ds, ["ITITER", "ISLDIA", "CONVCR", "ITMAX"], f15)
-
-        # Note - fort.15 files configured for 3D runs not supported yet
-        if ds.attrs["IM"] in [1, 2, 11, 21, 31]:
-            error("fort.15 files configured for 3D runs not supported yet.")
-        elif len(str(ds.attrs["IM"])) == 6:
-            # 1 in 6th digit indicates 3D run
-            if int(ds.attrs["IM"] / 100000.0) == 1:
-                error("fort.15 files configured for 3D runs not supported yet.")
-
-        # Last 10 fields before control list is netcdf params
-        nc_params = [
-            "NCPROJ",
-            "NCINST",
-            "NCSOUR",
-            "NCHIST",
-            "NCREF",
-            "NCCOM",
-            "NCHOST",
-            "NCCONV",
-            "NCCONT",
-            "NCDATE",
-        ]
-        for p in nc_params:
-            write_text_line(ds.attrs[p], "", f15)
-
-        # Add Control List to Bottom
-        for line in ds.attrs["CONTROL_LIST"]:
-            write_text_line(line, "", f15)
-
+    parser = ParamParser(fort15_instructions)
+    # Needed before writing to the file
+    remove_symlink(f15_file)
+    parser.dump(f15_file, data=ds)
 
 def create_nodal_att(name, units, default_vals, nodal_vals):
     str_vals = [f"v{str(x)}" for x in range(len(default_vals))]
@@ -1494,54 +862,64 @@ def process_adcirc_configs(path, filt="fort.*", met_times=[]):
 #P_CONFIGS = pull_param_configs()
 
 def getlines(fname):
-  with open(fname, "r") as fp: return fp.readlines()
+    with open(fname, "r") as fp: return fp.readlines()
 
 def writelines(fname, lines):
-  with open_paramfile(fname) as fp: fp.writelines(lines)
+    with open_paramfile(fname) as fp: fp.writelines(lines)
+
+def remove_symlink(fname):
+    """If a filename is a symlink - remove the symlink.
+    """
+
+    if os.path.islink(fname):
+        os.unlink(fname)
 
 def open_paramfile(fname):
-  """Safely open paramfile for writing - removing a symlink if one exists.
-  """
+    """Safely open paramfile for writing - removing a symlink if one exists.
 
-  # Handle symlinks appropriately
-  if os.path.islink(fname):
-    os.unlink(fname)
-  return open(fname, "w")
+    Often parameter files will be symlinks initially. We often need to modify the local file
+    without changing the shared source/template file.
+    """
+
+    remove_symlink(fname)
+    return open(fname, "w")
 
 def set_swan_params(fname, start_date, last_date, tstep=1200):
-  """Set dates and timestep in SWAN control file.
+    """Set dates and timestep in SWAN control file.
 
-  Args:
+    Args:
     fname (str) - input file name - will be overwritten
     start_date (datetime.datetime) - starting date
     last_date (dateimime.datetime - The last date in the forcing data.
-     Even if the simulation doesn't go that far, the 
-     COMPUTE line in fort.26 needs to use the last date from the fort.22 file.
-  """
+    Even if the simulation doesn't go that far, the 
+    COMPUTE line in fort.26 needs to use the last date from the fort.22 file.
+    """
 
-  lines = getlines(fname)
-  # support only hours for now
-  fmt = "%Y%m%d.%H0000"
-  start_str = start_date.strftime(fmt)
-  last_str = last_date.strftime(fmt)
-  new_lines = []
-  for i in range(len(lines)):
-    l = lines[i]
-    if "INIT HOTSTART" in l+lines[i-1]: continue
-    if " SEC " in l:
-      parts = l.split(" ")
-      ind = parts.index("SEC")
-      parts[ind-1] = str(tstep)
-      if "COMPUTE" in l:
-        parts[ind-2], parts[ind+1] = start_str, last_str
-      else:
-        parts[ind-2], parts[ind+1] = start_str, last_str
-      new_lines.append(" ".join(parts)+"\n")
-    elif "WTIMINC" in l:
-      new_lines.append("'WTIMINC Line in ADCIRC fort.15 " + start_date.strftime("%Y %m %d %H 1 0.9 1 ") + str(tstep)+"'\n")
-    else:
-      new_lines.append(l)
-  writelines(fname, new_lines)
+    lines = getlines(fname)
+    # support only hours for now
+    fmt = "%Y%m%d.%H0000"
+    start_str = start_date.strftime(fmt)
+    last_str = last_date.strftime(fmt)
+    new_lines = []
+    wtiminc = start_date.strftime("%Y %m %d %H 1 0.9 1 ") + str(tstep)
+    for i in range(len(lines)):
+        l = lines[i]
+        if "INIT HOTSTART" in l+lines[i-1]: continue
+        if " SEC " in l:
+            parts = l.split(" ")
+            ind = parts.index("SEC")
+            parts[ind-1] = str(tstep)
+            if "COMPUTE" in l:
+                parts[ind-2], parts[ind+1] = start_str, last_str
+            else:
+                parts[ind-2], parts[ind+1] = start_str, last_str
+                new_lines.append(" ".join(parts)+"\n")
+        elif "WTIMINC" in l:
+            new_lines.append("'WTIMINC Line in ADCIRC fort.15 " + wtiminc +"'\n")
+        else:
+            new_lines.append(l)
+    writelines(fname, new_lines)
+    return wtiminc
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

@@ -39,31 +39,30 @@ class ParamParser():
     """A class for parsing generic ADCIRC parameter files
     """
 
-    def __init__(self, instructions, starting_params={}):
+    def __init__(self, instructions):
         """Initialize the parser
 
         Args:
             instructions (list) - a list of parsing instructions
-            starting_params (dict) - a dictionary with starting parameters
-                Sometimes parameters from one file are needed to parse another file.
-                For example, NETA is found in the fort.14 file, and is required to parse the fort.15 file.
         """
 
         self.instructions = [i if isinstance(i, ParsingInstruction) else ParsingInstruction(**i) for i in instructions]
-        self.starting_params = starting_params
  
-    def parse(self, fname, strict=False):
+    def parse(self, fname, starting_params={}, strict=False):
         """Parse the given file.
 
         Args:
             fname (str) - parameter filename
+            starting_params (dict) - a dictionary with starting parameters
+                Sometimes parameters from one file are needed to parse another file.
+                For example, NETA is found in the fort.14 file, and is required to parse the fort.15 file.
             strict (bool) - If True, then spurious parameter data on a line will result in an error.
                 Use strict=True for debugging. If False (default), then extra parameter values will be ignored.
         Returns:
             data (dict) - the parsed parameters and arrays
         """
 
-        self.data = self.starting_params.copy()
+        self.data = starting_params.copy()
         self.comments = {}
         self.trailing_lines = []
         self.skipped_params = set()
@@ -79,6 +78,7 @@ class ParamParser():
             self._parse_instruction(i)
 
         self.data['_trailing_lines'] = self.lines[self.ln:]
+        self.data['_comments'] = self.comments.copy()
 
         return self.data
 
@@ -106,6 +106,11 @@ class ParamParser():
             params = i.params
             l, self.comments[i.key()] = self.getline()
             if len(params) == 1:
+                # Convert to a float if we can
+                try:
+                    l = float(l)
+                except:
+                    pass
                 # For single parameters we don't care if there are spaces in the line
                 self.data[params[0]] = l
                 return
@@ -213,9 +218,17 @@ class ParamParser():
 
         self._execute_loop(prepped_loop)
 
-    def dump(self, fname, data = None):
-        if data is not None:
-            self.data = data
+    def dump(self, fname, data):
+        """Dump parameters to file
+
+        Args:
+            fname (str) - parameter output filename
+            data (dict) - data to dump.
+        """
+
+        self.data = data
+        self.comments = self.data.get("_comments", {})
+        self.skipped_params = set()
 
         self.lines = []
         # We are in dumping mode, not parsing mode
