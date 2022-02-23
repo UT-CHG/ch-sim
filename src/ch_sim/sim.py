@@ -182,7 +182,7 @@ class BaseSimulator:
     def _base_job_config(self, **config):
         res = {
             "name": self.name,
-            "appId": self.name,
+            "app": self.name,
             "nodeCount": config.get("nodeCount", 1),
             "queue": config.get("queue", "development"),
             "processesPerNode": config.get("processesPerNode", 48),

@@ -1,4 +1,4 @@
-from taccjm import TACCJobManager
+from taccjm import taccjm as tjm
 from pathlib import Path
 import shutil
 import json
@@ -7,12 +7,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class SimulationManager(TACCJobManager):
+class SimulationManager:
     """An wrapper around TACCJobManager meant for working with simulations - which can be collections of jobs.
     """
 
     def __init__(self, system, user=None, psw=None):
-        super().__init__(system, user=user, psw=psw)
+        jms = tjm.list_jms()
+        self.jm_id = f"ch-sim-{system}"
+        if self.jm_id not in [jm['jm_id'] for jm in jms]:
+            tjm.init_jm(self.jm_id, system, user=user, psw=psw)
 
     def _setup_app_dir(self, simulator, dirname, **config):
         """Setup a local app dir for a simulation
@@ -33,12 +36,14 @@ class SimulationManager(TACCJobManager):
         # now make the app.json
         app_config = {
             "name": simulator.name,
-            "shortDescription": "",
-            "defaultQueue": config.get("queue", "development"),
-            "defaultNodeCount": config.get("nodes", 1),
-            "defaultProcessorsPerNode": 48,
-            "defaultMaxRunTime": "0:30:00",
-            "templatePath": "run.sh",
+            "short_desc": "",
+            "long_desc": "",
+            "default_queue": config.get("queue", "development"),
+            "default_node_count": config.get("nodes", 1),
+            "default_processors_per_node": 48,
+            "default_max_run_time": "0:30:00",
+            "default_memory_per_node": 128,
+            "entry_script": "run.sh",
             "inputs": [],
             "parameters": [],
             "outputs": [],
@@ -69,12 +74,13 @@ class SimulationManager(TACCJobManager):
         # setup a TACCJM application
         tmpdir = ".tmp_chsim_app"
         self._setup_app_dir(simulator, tmpdir, **config)
-        app_config = self.deploy_app(local_app_dir=tmpdir, overwrite=True)
+        app_config = tjm.deploy_app(self.jm_id, local_app_dir=tmpdir, overwrite=True)
+        print(app_config)
         shutil.rmtree(tmpdir)
 
         job_configs = []
         for job_config in simulator.generate_job_configs(self, **config):
-            config = self.setup_job(job_config)
+            config = tjm.deploy_job(self.jm_id, job_config)
             job_configs.append(config)
 
         njobs = len(job_configs)
@@ -82,10 +88,10 @@ class SimulationManager(TACCJobManager):
         submit = self.prompt(f"Submit {njobs} jobs? [y/n]: ")
         if submit:
             for config in job_configs:
-                self.submit_job(config["job_id"])
+                tjm.submit_job(self.jm_id, config["job_id"])
         elif self.prompt("Save setup jobs for later?"):
             # TODO - actually save the jobs
             pass
         else:
             for config in job_configs:
-                self.cleanup_job(job_config)
+                tjm.cleanup_job(self.tjm_id, job_config)
