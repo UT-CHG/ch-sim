@@ -123,10 +123,10 @@ class BaseSimulator:
         This is the entry point for a single job within the simulation.
         """
 
-        nodeCount = int(job_config.get("nodeCount"))
+        node_count = int(job_config.get("node_count"))
         procsPerNode = int(job_config.get("processors_per_node"))
         writers, workers = BaseSimulator.get_writers_and_workers(
-            nodeCount, procsPerNode
+            node_count, procsPerNode
         )
 
         logger.info("Starting first adcprep run. . .")
@@ -185,7 +185,7 @@ class BaseSimulator:
         res = {
             "name": self.name,
             "app": self.name,
-            "nodeCount": config.get("nodeCount", 1),
+            "node_count": config.get("node_count", 1),
             "queue": config.get("queue", "development"),
             "processors_per_node": config.get("processors_per_node", 48),
             "desc": "",
@@ -212,9 +212,9 @@ class BaseSimulator:
             return f"{hours:02}:{minutes:02}:00"
 
     @staticmethod
-    def get_writers_and_workers(nodeCount, procsPerNode):
-        totalProcs = nodeCount * procsPerNode
-        writers = max(1, nodeCount // 2)
+    def get_writers_and_workers(node_count, procsPerNode):
+        totalProcs = node_count * procsPerNode
+        writers = max(1, node_count // 2)
         workers = totalProcs - writers
         return writers, workers
 
@@ -232,8 +232,8 @@ class EnsembleSimulator(BaseSimulator):
         "runs": list,
         # per-task runtime
         "runtime": [float, int],
-        # per-task nodecount
-        "nodeCount": int,
+        # per-task node_count
+        "node_count": int,
     }
 
     def _validate_config(self):
@@ -249,15 +249,15 @@ class EnsembleSimulator(BaseSimulator):
         maxJobNodes = config.get("maxJobNodes", 30)
         maxJobRuntime = config.get("maxJobRuntime", 24)
         runs = config["runs"]
-        # Note that for EnsembleSimulator config["nodeCount"] is the per-run nodes, NOT for the entire simulation
-        nodesPerRun, timePerRun = config["nodeCount"], config["runtime"]
+        # Note that for EnsembleSimulator config["node_count"] is the per-run nodes, NOT for the entire simulation
+        nodesPerRun, timePerRun = config["node_count"], config["runtime"]
         numSlots = int(maxJobNodes // nodesPerRun)
         consecRuns = int(maxJobRuntime // timePerRun)
         runsPerJob = numSlots * consecRuns
 
         if not numSlots:
             raise ValueError(
-                f"Nodes per run is {config['nodeCount']}, but the maximum is {maxJobNodes}."
+                f"Nodes per run is {config['node_count']}, but the maximum is {maxJobNodes}."
                 f" If you really need that many nodes for a single run, increase the maximum by setting maxJobNodes."
             )
         elif not consecRuns:
@@ -275,10 +275,10 @@ class EnsembleSimulator(BaseSimulator):
             input_config = config.copy()
             numJobRuns = len(jobRuns)
             if numJobRuns == runsPerJob:
-                input_config["nodeCount"] = numSlots * nodesPerRun
+                input_config["node_count"] = numSlots * nodesPerRun
                 input_config["runtime"] = consecRuns * timePerRun
             else:
-                input_config["nodeCount"] = min(numSlots, numJobRuns) * nodesPerRun
+                input_config["node_count"] = min(numSlots, numJobRuns) * nodesPerRun
                 input_config["runtime"] = math.ceil(numJobRuns / numSlots) * timePerRun
             config = self._base_job_config(**input_config)
             config["jobRuns"] = jobRuns
@@ -318,10 +318,10 @@ class EnsembleSimulator(BaseSimulator):
         # Step 1 - generate Pylauncher input
         tasks = []
 
-        # We have to be careful to use nodeCount from config - because that corresponds
+        # We have to be careful to use node_count from config - because that corresponds
         # to the per-run nodes
         writers, workers = BaseSimulator.get_writers_and_workers(
-            self.config["nodeCount"], job_config["processors_per_node"]
+            self.config["node_count"], job_config["processors_per_node"]
         )
 
         total = workers + writers
