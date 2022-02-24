@@ -109,7 +109,9 @@ class BaseSimulator:
 
         exec_name = self._get_exec_name()
         os.makedirs("inputs", exist_ok=True)
-        self._run_command(f"cp {self.config['inputs_dir']}/* inputs")
+	# if there are directories in the inputs dir, cp will still copy the inputs,
+	# but will have a non-zero exit code
+        self._run_command(f"cp {self.config['inputs_dir']}/* inputs", check=False)
         self._run_command(
             f"cp {self.config['execs_dir']}/" + "{adcprep," + exec_name + "} ."
         )
@@ -122,7 +124,7 @@ class BaseSimulator:
         """
 
         nodeCount = int(job_config.get("nodeCount"))
-        procsPerNode = int(job_config.get("processorsPerNode"))
+        procsPerNode = int(job_config.get("processors_per_node"))
         writers, workers = BaseSimulator.get_writers_and_workers(
             nodeCount, procsPerNode
         )
@@ -185,7 +187,7 @@ class BaseSimulator:
             "app": self.name,
             "nodeCount": config.get("nodeCount", 1),
             "queue": config.get("queue", "development"),
-            "processesPerNode": config.get("processesPerNode", 48),
+            "processors_per_node": config.get("processors_per_node", 48),
             "desc": "",
             "inputs": {},
             "parameters": {},
@@ -305,7 +307,7 @@ class EnsembleSimulator(BaseSimulator):
 
         if "inputs_dir" in run:
             # add extra inputs/overwrite existing ones
-            self._run_command(f"ln -sf {inputs_dir}/* {run_dir}")
+            self._run_command(f"ln -sf {run['inputs_dir']}/* {run_dir}")
 
         if "parameters" in run:
             # TODO - edit input parameter files, performing copy-on-write
@@ -319,26 +321,27 @@ class EnsembleSimulator(BaseSimulator):
         # We have to be careful to use nodeCount from config - because that corresponds
         # to the per-run nodes
         writers, workers = BaseSimulator.get_writers_and_workers(
-            self.config["nodeCount"], job_config["processorsPerNode"]
+            self.config["nodeCount"], job_config["processors_per_node"]
         )
 
         total = workers + writers
         exec_name = self._get_exec_name()
+        job_dir = job_config['job_dir']
 
         for run_dir in self.run_dirs:
             pre_process = ";".join(
                 [
                     f"cd {run_dir}",
-                    f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep",
-                    f"printf '{workers}\\n2\\n' | ./adcprep",
-                    f"cd ..",
+                    f"printf '{workers}\\n1\\nfort.14\\n' | {job_dir}/adcprep",
+                    f"printf '{workers}\\n2\\n' | {job_dir}/adcprep",
+                    f"cd {job_dir}",
                 ]
             )
 
             task = {
                 "cores": total,
                 "pre_process": pre_process,
-                "main": f"./{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
+                "main": f"{job_dir}/{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
             }
 
             tasks.append(task)
