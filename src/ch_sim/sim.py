@@ -324,21 +324,22 @@ class EnsembleSimulator(BaseSimulator):
 
         total = workers + writers
         exec_name = self._get_exec_name()
+        job_dir = job_config['job_dir']
 
         for run_dir in self.run_dirs:
             pre_process = ";".join(
                 [
                     f"cd {run_dir}",
-                    f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep",
-                    f"printf '{workers}\\n2\\n' | ./adcprep",
-                    f"cd ..",
+                    f"printf '{workers}\\n1\\nfort.14\\n' | {job_dir}/adcprep",
+                    f"printf '{workers}\\n2\\n' | {job_dir}/adcprep",
+                    f"cd {job_dir}",
                 ]
             )
 
             task = {
                 "cores": total,
                 "pre_process": pre_process,
-                "main": f"./{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
+                "main": f"{job_dir}/{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
             }
 
             tasks.append(task)

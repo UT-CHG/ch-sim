@@ -241,10 +241,15 @@ class ParamParser():
                 if not self._check_condition(i): continue
                 line = " ".join([str(self.data[p]) for p in i.params])
                 k = i.key()
-                if k in self.comments:
-                    line += " ! " + self.comments[k]
+                # It is possible for the comment to be None
+                comment = self.comments.get(k, None)
+                # add back in trailing whitespace just to be safe
+                # This can make the difference between adcprep crashing or not
+                line += " " * 10
+                if comment is not None:
+                    line += " ! " + comment
                 else:
-                    line += "! " + i.comment()
+                    line += " ! " + i.comment()
 
                 self.writeline(line)
 
