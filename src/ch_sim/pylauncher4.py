@@ -121,7 +121,7 @@ def ClusterName():
         return "mic"
     # case: tacc cluster node
     if re.match("nid[0-9]", namesplit[0]):
-        return "ls5"
+        return "ls6"
     elif "tacc" in namesplit:
         if len(namesplit) > 1 and re.match("c[0-9]", namesplit[0]):
             return namesplit[1]
@@ -132,24 +132,10 @@ def ClusterName():
 
 
 def JobId():
-    """This function is installation dependent: it inspects the environment variable
-    that holds the job ID, based on the actual name of the host (see
-     ``HostName``): this should only return a number if we are actually in a job.
+    """Return the SLURM_JOB_ID if available.
     """
-    hostname = ClusterName()
-    if hostname == "ls4":
-        return os.environ["JOB_ID"]
-    elif hostname in [
-        "ls5",
-        "maverick",
-        "stampede",
-        "stampede2",
-        "stampede2-knl",
-        "stampede2-skx",
-    ]:
-        return os.environ["SLURM_JOB_ID"]
-    else:
-        return None
+
+    return os.environ.get("SLURM_JOB_ID")
 
 
 class HostList:
@@ -225,10 +211,10 @@ class SLURMHostList(HostList):
 def HostListByName(**kwargs):
     """Give a proper hostlist. Currently this work for the following TACC hosts:
 
-    * ``ls4``: Lonestar4, using SGE
-    * ``ls5``: Lonestar5, using SLURM
+    * ``ls6``: Lonestar6, using SLURM
     * ``maverick``: Maverick, using SLURM
     * ``stampede``: Stampede, using SLURM
+    * ``frontera``: Frontera, using SLURM
     * ``mic``: Intel Xeon PHI co-processor attached to a compute node
 
     We return a trivial hostlist otherwise.
@@ -236,22 +222,18 @@ def HostListByName(**kwargs):
     debugs = kwargs.pop("debug", "")
     debug = re.search("host", debugs)
     cluster = ClusterName()
-    if cluster == "ls4":
-        hostlist = SGEHostList(tag=".ls4.tacc.utexas.edu", **kwargs)
-    elif cluster == "ls5":  # ls5 nodes don't have fully qualified hostname
+    clusterpref = cluster.split("-")[0]
+    if cluster == "ls6":  # ls5 nodes don't have fully qualified hostname (is this stil true for ls6?) 
         hostlist = SLURMHostList(tag="", **kwargs)
-    elif cluster == "maverick":
-        hostlist = SLURMHostList(tag=".maverick.tacc.utexas.edu", **kwargs)
-    elif cluster == "stampede":
-        hostlist = SLURMHostList(tag=".stampede.tacc.utexas.edu", **kwargs)
-    elif cluster in ["stampede2", "stampede2-knl", "stampede2-skx"]:
-        hostlist = SLURMHostList(tag=".stampede2.tacc.utexas.edu", **kwargs)
+    elif clusterpref in ["maverick", "stampede", "frontera", "stampede2"]:
+        hostlist = SLURMHostList(tag=f".{clusterpref}.tacc.utexas.edu", **kwargs)
     elif cluster == "mic":
         hostlist = HostList(["localhost" for i in range(60)])
     else:
         hostlist = HostList(hostlist=[HostName()])
     if debug:
         print("Hostlist on %s : %s" % (cluster, str(hostlist)))
+
     return hostlist
 
 

@@ -21,7 +21,8 @@ class BaseSimulator:
     REQUIRED_PARAMS = {"execs_dir": str, "inputs_dir": str}
 
     def __init__(
-        self, system, user=None, psw=None, allocation=None, deps=None, name=None
+        self, system, user=None, psw=None, allocation=None, deps=None, name=None,
+        modules=None
     ):
         """Initialize the simulator.
 
@@ -33,6 +34,7 @@ class BaseSimulator:
             deps - a list of directories and files that are required to run the simulator.
                 Defaults to just the current file.
             name - a name for the simulation. If not passed, the name is inferred from the current filename.
+            modules - a list of required modules
         """
 
         self.system = system
@@ -41,6 +43,7 @@ class BaseSimulator:
         self.deps = deps
         self.allocation = allocation
         self.psw = psw
+        self.modules = modules
 
         self._init_from_env()
 
@@ -109,7 +112,9 @@ class BaseSimulator:
 
         exec_name = self._get_exec_name()
         os.makedirs("inputs", exist_ok=True)
-        self._run_command(f"cp {self.config['inputs_dir']}/* inputs")
+	# if there are directories in the inputs dir, cp will still copy the inputs,
+	# but will have a non-zero exit code
+        self._run_command(f"cp {self.config['inputs_dir']}/* inputs", check=False)
         self._run_command(
             f"cp {self.config['execs_dir']}/" + "{adcprep," + exec_name + "} ."
         )
@@ -121,10 +126,10 @@ class BaseSimulator:
         This is the entry point for a single job within the simulation.
         """
 
-        nodeCount = int(job_config.get("nodeCount"))
-        procsPerNode = int(job_config.get("processorsPerNode"))
+        node_count = int(job_config.get("node_count"))
+        procsPerNode = int(job_config.get("processors_per_node"))
         writers, workers = BaseSimulator.get_writers_and_workers(
-            nodeCount, procsPerNode
+            node_count, procsPerNode
         )
 
         logger.info("Starting first adcprep run. . .")
@@ -182,10 +187,10 @@ class BaseSimulator:
     def _base_job_config(self, **config):
         res = {
             "name": self.name,
-            "appId": self.name,
-            "nodeCount": config.get("nodeCount", 1),
+            "app": self.name,
+            "node_count": config.get("node_count", 1),
             "queue": config.get("queue", "development"),
-            "processesPerNode": config.get("processesPerNode", 48),
+            "processors_per_node": config.get("processors_per_node", 48),
             "desc": "",
             "inputs": {},
             "parameters": {},
@@ -194,7 +199,7 @@ class BaseSimulator:
         if self.allocation is not None:
             res["allocation"] = self.allocation
         if "runtime" in config:
-            res["maxRunTime"] = BaseSimulator.hours_to_runtime_str(config["runtime"])
+            res["max_run_time"] = BaseSimulator.hours_to_runtime_str(config["runtime"])
 
         return res
 
@@ -210,9 +215,9 @@ class BaseSimulator:
             return f"{hours:02}:{minutes:02}:00"
 
     @staticmethod
-    def get_writers_and_workers(nodeCount, procsPerNode):
-        totalProcs = nodeCount * procsPerNode
-        writers = max(1, nodeCount // 2)
+    def get_writers_and_workers(node_count, procsPerNode):
+        totalProcs = node_count * procsPerNode
+        writers = max(1, node_count // 2)
         workers = totalProcs - writers
         return writers, workers
 
@@ -230,8 +235,8 @@ class EnsembleSimulator(BaseSimulator):
         "runs": list,
         # per-task runtime
         "runtime": [float, int],
-        # per-task nodecount
-        "nodeCount": int,
+        # per-task node_count
+        "node_count": int,
     }
 
     def _validate_config(self):
@@ -247,20 +252,20 @@ class EnsembleSimulator(BaseSimulator):
         maxJobNodes = config.get("maxJobNodes", 30)
         maxJobRuntime = config.get("maxJobRuntime", 24)
         runs = config["runs"]
-        # Note that for EnsembleSimulator config["nodeCount"] is the per-run nodes, NOT for the entire simulation
-        nodesPerRun, timePerRun = config["nodeCount"], config["runtime"]
+        # Note that for EnsembleSimulator config["node_count"] is the per-run nodes, NOT for the entire simulation
+        nodesPerRun, timePerRun = config["node_count"], config["runtime"]
         numSlots = int(maxJobNodes // nodesPerRun)
         consecRuns = int(maxJobRuntime // timePerRun)
         runsPerJob = numSlots * consecRuns
 
         if not numSlots:
             raise ValueError(
-                f"Nodes per run is {config['nodeCount']}, but the maximum is {maxJobNodes}."
+                f"Nodes per run is {config['node_count']}, but the maximum is {maxJobNodes}."
                 f" If you really need that many nodes for a single run, increase the maximum by setting maxJobNodes."
             )
         elif not consecRuns:
             raise ValueError(
-                f"Runtime for a single run is {config['runtime']} hours, but the maximum is {maxRuntime} hours."
+                f"Runtime for a single run is {config['runtime']} hours, but the maximum is {maxJobRuntime} hours."
                 f" If you really need a longer runtime, increase the maximum by setting maxJobRuntime."
                 " Note that the maximum per-job runtime on TACC is typically 48 hours."
             )
@@ -273,10 +278,10 @@ class EnsembleSimulator(BaseSimulator):
             input_config = config.copy()
             numJobRuns = len(jobRuns)
             if numJobRuns == runsPerJob:
-                input_config["nodeCount"] = numSlots * nodesPerRun
+                input_config["node_count"] = numSlots * nodesPerRun
                 input_config["runtime"] = consecRuns * timePerRun
             else:
-                input_config["nodeCount"] = min(numSlots, numJobRuns) * nodesPerRun
+                input_config["node_count"] = min(numSlots, numJobRuns) * nodesPerRun
                 input_config["runtime"] = math.ceil(numJobRuns / numSlots) * timePerRun
             config = self._base_job_config(**input_config)
             config["jobRuns"] = jobRuns
@@ -305,7 +310,7 @@ class EnsembleSimulator(BaseSimulator):
 
         if "inputs_dir" in run:
             # add extra inputs/overwrite existing ones
-            self._run_command(f"ln -sf {inputs_dir}/* {run_dir}")
+            self._run_command(f"ln -sf {run['inputs_dir']}/* {run_dir}")
 
         if "parameters" in run:
             # TODO - edit input parameter files, performing copy-on-write
@@ -316,10 +321,10 @@ class EnsembleSimulator(BaseSimulator):
         # Step 1 - generate Pylauncher input
         tasks = []
 
-        # We have to be careful to use nodeCount from config - because that corresponds
+        # We have to be careful to use node_count from config - because that corresponds
         # to the per-run nodes
         writers, workers = BaseSimulator.get_writers_and_workers(
-            self.config["nodeCount"], job_config["processorsPerNode"]
+            self.config["node_count"], job_config["processors_per_node"]
         )
 
         total = workers + writers
