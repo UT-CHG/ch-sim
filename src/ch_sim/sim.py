@@ -21,7 +21,8 @@ class BaseSimulator:
     REQUIRED_PARAMS = {"execs_dir": str, "inputs_dir": str}
 
     def __init__(
-        self, system, user=None, psw=None, allocation=None, deps=None, name=None
+        self, system, user=None, psw=None, allocation=None, deps=None, name=None,
+        modules=None
     ):
         """Initialize the simulator.
 
@@ -33,6 +34,7 @@ class BaseSimulator:
             deps - a list of directories and files that are required to run the simulator.
                 Defaults to just the current file.
             name - a name for the simulation. If not passed, the name is inferred from the current filename.
+            modules - a list of required modules
         """
 
         self.system = system
@@ -41,6 +43,7 @@ class BaseSimulator:
         self.deps = deps
         self.allocation = allocation
         self.psw = psw
+        self.modules = modules
 
         self._init_from_env()
 
@@ -196,7 +199,7 @@ class BaseSimulator:
         if self.allocation is not None:
             res["allocation"] = self.allocation
         if "runtime" in config:
-            res["maxRunTime"] = BaseSimulator.hours_to_runtime_str(config["runtime"])
+            res["max_run_time"] = BaseSimulator.hours_to_runtime_str(config["runtime"])
 
         return res
 
@@ -262,7 +265,7 @@ class EnsembleSimulator(BaseSimulator):
             )
         elif not consecRuns:
             raise ValueError(
-                f"Runtime for a single run is {config['runtime']} hours, but the maximum is {maxRuntime} hours."
+                f"Runtime for a single run is {config['runtime']} hours, but the maximum is {maxJobRuntime} hours."
                 f" If you really need a longer runtime, increase the maximum by setting maxJobRuntime."
                 " Note that the maximum per-job runtime on TACC is typically 48 hours."
             )

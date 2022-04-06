@@ -56,10 +56,16 @@ class SimulationManager:
             pass
 
         with open(assets_dir + "/run.sh", "w") as fp:
+            if simulator.modules is not None:
+                module_str = "module load " + " ".join(simulator.modules)
+            else:
+                module_str = ""
+
             fp.write(
                 "#!/bin/bash\n\n"
                 'eval "$(conda shell.`basename -- $SHELL` hook)"'
                 "\nconda activate ch-sim\n"
+                f"{module_str}\n"
                 "python3 sim.py --action=run"
             )
 
@@ -94,4 +100,4 @@ class SimulationManager:
             pass
         else:
             for config in job_configs:
-                tjm.cleanup_job(self.tjm_id, job_config)
+                tjm.remove_job(self.jm_id, config["job_id"])
