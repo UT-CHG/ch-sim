@@ -913,7 +913,7 @@ def set_swan_params(fname, start_date, last_date, tstep=1200):
                 parts[ind-2], parts[ind+1] = start_str, last_str
             else:
                 parts[ind-2], parts[ind+1] = start_str, last_str
-                new_lines.append(" ".join(parts)+"\n")
+            new_lines.append(" ".join(parts)+"\n")
         elif "WTIMINC" in l:
             new_lines.append("'WTIMINC Line in ADCIRC fort.15 " + wtiminc +"'\n")
         else:
