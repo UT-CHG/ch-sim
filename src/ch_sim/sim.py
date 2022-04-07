@@ -214,7 +214,7 @@ class BaseSimulator:
     @staticmethod
     def get_writers_and_workers(node_count, procsPerNode):
         totalProcs = node_count * procsPerNode
-        writers = max(1, node_count // 2)
+        writers = max(1, totalProcs // 100)
         workers = totalProcs - writers
         return writers, workers
 
@@ -329,11 +329,13 @@ class EnsembleSimulator(BaseSimulator):
         job_dir = job_config['job_dir']
 
         for run_dir in self.run_dirs:
+            # We need to redirect the output of adcprep to a file - because with subprocess.Popen
+            # if a process has too much output it can cause a deadlock
             pre_process = ";".join(
                 [
                     f"cd {run_dir}",
-                    f"printf '{workers}\\n1\\nfort.14\\n' | {job_dir}/adcprep",
-                    f"printf '{workers}\\n2\\n' | {job_dir}/adcprep",
+                    f"printf '{workers}\\n1\\nfort.14\\n' | {job_dir}/adcprep > {run_dir}/adcprep.log",
+                    f"printf '{workers}\\n2\\n' | {job_dir}/adcprep >> {run_dir}/adcprep.log",
                     f"cd {job_dir}",
                 ]
             )
