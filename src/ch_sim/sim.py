@@ -111,10 +111,9 @@ class BaseSimulator:
         """
 
         exec_name = self._get_exec_name()
-        os.makedirs("inputs", exist_ok=True)
 	# if there are directories in the inputs dir, cp will still copy the inputs,
 	# but will have a non-zero exit code
-        self._run_command(f"cp {self.config['inputs_dir']}/* inputs", check=False)
+        self._run_command(f"cp {self.config['inputs_dir']}/* .", check=False)
         self._run_command(
             f"cp {self.config['execs_dir']}/" + "{adcprep," + exec_name + "} ."
         )
@@ -141,7 +140,7 @@ class BaseSimulator:
         self._run_command(f"printf '{workers}\\n2\\n' | ./adcprep", check=False)
         logger.info("Completed second adcprep run. Starting ADCIRC . . .")
         exec_name = self._get_exec_name()
-        self._run_command(f"ibrun ./{exec_name} -I inputs -W {writers}")
+        self._run_command(f"ibrun ./{exec_name} -W {writers}")
         logger.info("Completed ADCIRC run.")
 
     def _run_command(self, command, check=True, **kwargs):
