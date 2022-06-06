@@ -35,6 +35,11 @@ class ParsingInstruction:
     def comment(self):
         return ", ".join(self.params)
 
+    def __str__(self):
+        if self.loop: return f"LOOP({self.bound}, "  +  " ".join([str(i) for i in self.instructions]) +")"
+        else: return self.comment()
+
+
 class ParamParser():
     """A class for parsing generic ADCIRC parameter files
     """
@@ -98,6 +103,8 @@ class ParamParser():
     def _parse_instruction(self, i):
         """Execute one parsing instruction (for reading)
         """
+
+        #print("Parsing instruction", i)
 
         if i.loop:
             self._handle_loop(i)

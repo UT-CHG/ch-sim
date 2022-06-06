@@ -111,9 +111,11 @@ class BaseSimulator:
         """
 
         exec_name = self._get_exec_name()
+        os.makedirs("inputs", exist_ok=True)
 	# if there are directories in the inputs dir, cp will still copy the inputs,
 	# but will have a non-zero exit code
-        self._run_command(f"cp {self.config['inputs_dir']}/* .", check=False)
+        self._run_command(f"cp {self.config['inputs_dir']}/* inputs", check=False)
+        self._run_command("ln -sf inputs/* .")
         self._run_command(
             f"cp {self.config['execs_dir']}/" + "{adcprep," + exec_name + "} ."
         )

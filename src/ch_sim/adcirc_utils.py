@@ -171,7 +171,7 @@ def snatch_fort14_params(fname):
     res = {}
     with open(fname, "r") as fp:
         fp.readline()
-        res["NE"], res["NP"] = map(int, fp.readline().strip().split())
+        res["NE"], res["NP"] = map(int, fp.readline().strip().split()[:2])
         for i in range(res["NE"] + res["NP"]): fp.readline()
         res["NOPE"] = int(fp.readline().split()[0])
         res["NETA"] = int(fp.readline().split()[0])
@@ -341,7 +341,7 @@ def read_fort15(f15_file, ds=None):
         # we need NETA in order to parse the fort15 file
         # Try to find the fort.14 file
         dirname = os.path.dirname(f15_file)
-        f14_file = dirname + "/fort.14"
+        f14_file = dirname + "/fort.14" if dirname else "fort.14"
         if os.path.exists(f14_file):
             ds.update(snatch_fort14_params(f14_file))
         else:
