@@ -96,6 +96,7 @@ class BaseSimulator:
             job_config = self._get_job_config()
             self.setup_job(job_config)
             self.run_job(job_config)
+            self.postprocess_job(job_config)
         else:
             raise ValueError(f"Unsupported action {action}")
 
@@ -132,18 +133,29 @@ class BaseSimulator:
         writers, workers = BaseSimulator.get_writers_and_workers(
             node_count, procsPerNode
         )
-
         logger.info("Starting first adcprep run. . .")
         # ADCPREP returns an exit code of 1 on success - it's terrible . . .
         self._run_command(
-            f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep", check=False
+            f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep > adcprep.log", check=False
         )
         logger.info("Starting second adcprep run. . .")
-        self._run_command(f"printf '{workers}\\n2\\n' | ./adcprep", check=False)
+        self._run_command(f"printf '{workers}\\n2\\n' | ./adcprep >> adcprep.log", check=False)
         logger.info("Completed second adcprep run. Starting ADCIRC . . .")
         exec_name = self._get_exec_name()
         self._run_command(f"ibrun ./{exec_name} -W {writers}")
         logger.info("Completed ADCIRC run.")
+
+    def postprocess_job(self, job_config):
+        """Postprocess the job
+        
+        Intensive post-processing steps that require parallelization should take place in run_job.
+        This is for light post-processing and copying results back to WORK.
+        """
+   
+        outdir = self.config.get("outputs_dir")
+        if outdir is not None:
+            os.makedirs(outdir, exist_ok=True)
+            self._run_command(f"cp {job_config['job_dir']}/*.nc {outdir}")
 
     def _run_command(self, command, check=True, **kwargs):
         logger.info(f"Running '{command}'")
@@ -218,7 +230,7 @@ class BaseSimulator:
     @staticmethod
     def get_writers_and_workers(node_count, procsPerNode):
         totalProcs = node_count * procsPerNode
-        writers = max(1, totalProcs // 100)
+        writers = node_count
         workers = totalProcs - writers
         return writers, workers
 
