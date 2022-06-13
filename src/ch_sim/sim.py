@@ -249,7 +249,7 @@ class EnsembleSimulator(BaseSimulator):
         # per-task runtime
         "runtime": [float, int],
         # per-task node_count
-        "node_count": int,
+        "node_count": [int, float],
     }
 
     def _validate_config(self):
