@@ -344,7 +344,7 @@ class EnsembleSimulator(BaseSimulator):
         exec_name = self._get_exec_name()
         job_dir = job_config['job_dir']
 
-        for run_dir in self.run_dirs:
+        for run, run_dir in zip(job_config['jobRuns'], self.run_dirs):
             # We need to redirect the output of adcprep to a file - because with subprocess.Popen
             # if a process has too much output it can cause a deadlock
             pre_process = ";".join(
@@ -362,6 +362,11 @@ class EnsembleSimulator(BaseSimulator):
                 "main": f"{job_dir}/{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
             }
 
+            postprocess_cmd = self.make_postprocess_command(run, run_dir)
+
+            if postprocess_cmd is not None:
+                task["post_process"] = postprocess_cmd 
+
             tasks.append(task)
 
         # step 2 - launch Pylauncher with this input
@@ -370,3 +375,8 @@ class EnsembleSimulator(BaseSimulator):
             json.dump(tasks, fp)
 
         IbrunLauncher(outfile, pre_post_process=True)
+
+    def make_postprocess_command(self, run, run_dir):
+        outdir = run.get('outputs_dir')
+        if outdir is not None:
+            return f"cp {run_dir}/*.nc {outdir}"

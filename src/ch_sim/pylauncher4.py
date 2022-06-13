@@ -707,6 +707,8 @@ class IbrunExecutor(Executor):
         post_process = kwargs.pop("post_process", None)
         if pool is None:
             raise LauncherException("SSHExecutor needs explicit HostPool")
+        if post_process is not None:
+            command += "; " + post_process
         wrapped_command = self.wrap(command)
         stdout = kwargs.pop("stdout", subprocess.PIPE)
         full_commandline = "ibrun -o %d -n %d %s" % (
@@ -717,8 +719,6 @@ class IbrunExecutor(Executor):
         # Pre and post process commands not run in parallel
         if pre_process is not None:
             full_commandline = pre_process + ";" + full_commandline
-        if post_process is not None:
-            full_commandline = full_commandline + ";" + post_process
         DebugTraceMsg(
             "executed commandline: <<%s>>" % str(full_commandline),
             self.debug,
