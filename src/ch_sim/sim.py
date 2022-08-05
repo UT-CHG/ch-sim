@@ -1,5 +1,5 @@
 from . import adcirc_utils as au
-from .manager import SimulationManager
+from .manager import SimulationManager, RemoteSimulationManager
 import argparse as ap
 import os
 import logging
@@ -21,13 +21,13 @@ class BaseSimulator:
     REQUIRED_PARAMS = {"execs_dir": str, "inputs_dir": str}
 
     def __init__(
-        self, system, user=None, psw=None, allocation=None, deps=None, name=None,
+        self, system=None, user=None, psw=None, allocation=None, deps=None, name=None,
         modules=None
     ):
         """Initialize the simulator.
 
         Args:
-            system - the HPC system
+            system - the HPC system - if None will run on local system
             user - the user
             psw_file - a text file with the password (optional)
             allocation - the allocation ID
@@ -104,7 +104,10 @@ class BaseSimulator:
         """Setup simulation files on TACC.
         """
 
-        manager = SimulationManager(self.system, user=self.user, psw=self.psw)
+        if self.system is not None:
+            manager = RemoteSimulationManager(self.system, user=self.user, psw=self.psw)
+        else: # assume local
+            manager = SimulationManager()
         manager.setup_simulation(self, **config)
 
     def setup_job(self, job_config):
