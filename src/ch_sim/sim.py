@@ -44,7 +44,7 @@ class BaseSimulator:
         self.allocation = allocation
         self.psw = psw
         self.modules = modules
-
+	
         self._init_from_env()
 
         import __main__
@@ -85,8 +85,8 @@ class BaseSimulator:
         """
 
         # Determine what we need to do
-        args = self._get_args()
-        action = args.action
+        self.args = self._get_args()
+        action = self.args.action
         self.config = config
         if action == "setup":
             self._validate_config()
@@ -169,9 +169,21 @@ class BaseSimulator:
         return "padcswan" if swan else "padcirc"
 
     def _get_args(self):
-        parser = ap.ArgumentParser()
-        parser.add_argument("--action", default="setup", choices=["setup", "run"])
-        return parser.parse_args()
+        action_parser = ap.ArgumentParser(add_help=False)
+        action_parser.add_argument("--action", default="setup", choices=["setup", "run"])
+        action_args, _ = action_parser.parse_known_args()
+        if action_args.action == "setup":
+            parser = ap.ArgumentParser(parents=[action_parser])
+            self.add_commandline_args(parser)
+            args = parser.parse_args()
+            args.action = action_args.action
+            return args
+        else:
+            return action_args
+
+
+    def add_commandline_args(self, parser):
+        pass
 
     def test(self):
         """Do a dry run of the simulation.
@@ -216,6 +228,8 @@ class BaseSimulator:
             res["allocation"] = self.allocation
         if "runtime" in config:
             res["max_run_time"] = BaseSimulator.hours_to_runtime_str(config["runtime"])
+
+        res["args"] = self.args.__dict__.copy()
 
         return res
 
