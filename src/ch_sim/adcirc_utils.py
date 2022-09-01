@@ -741,6 +741,44 @@ def write_fort15(ds, f15_file):
     remove_symlink(f15_file)
     parser.dump(f15_file, data=ds)
 
+def fix_fort_params(fname, params):
+    """Read a file line by line - and make some quick-and-dirty fixes
+    """
+    params = params.copy()
+    with open(fname, "r") as fp:
+        lines = fp.readlines()
+
+    for i in range(len(lines)):
+        l = lines[i]
+        if "!" not in l: continue
+        parts = l.split("!")
+        value = parts[0]
+        comment = "!".join(parts[1:])
+        for param, new_value in list(params.items()):
+            if param.lower() in comment.lower():
+                new_value = str(new_value).ljust(len(value), " ")
+                lines[i] = new_value+"!"+comment
+                del params[param]
+                break
+
+    with open(fname, "w") as fp:
+        fp.write("".join(lines))
+
+def snatch_fort_params(fname, params):
+    res = {}
+    with open(fname, "r") as fp:
+        for line in fp:
+            if "!" not in line: continue
+            parts = line.split("!")
+            val, comment = parts[0], "!".join(parts[1:])
+            for p in params:
+                if p in res: continue
+                if p in comment:
+                    res[p] = val.strip()
+
+    return res
+    
+
 def create_nodal_att(name, units, default_vals, nodal_vals):
     str_vals = [f"v{str(x)}" for x in range(len(default_vals))]
     base_df = (

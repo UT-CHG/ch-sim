@@ -27,6 +27,7 @@ submit_script_template = """#!/bin/bash
 #SBATCH -N {node_count}          # Total num nodes
 #SBATCH -n {cores}          # Total num mpi tasks
 #SBATCH -t {run_time}         # Run time (hh:mm:ss)
+#SBATCH --ntasks-per-node {processors_per_node} # tasks per node
 #SBATCH -A {allocation} # Allocation name
 #----------------------------------------------------
 
@@ -162,7 +163,8 @@ class SimulationManager:
                         queue=job_config["queue"],
                         run_time=job_config["max_run_time"],
                         cores=job_config["node_count"]*job_config["processors_per_node"],
-                        node_count=job_config["node_count"]
+                        node_count=job_config["node_count"],
+                        processors_per_node=job_config["processors_per_node"],
                         )
                     )
 

@@ -93,10 +93,9 @@ class BaseSimulator:
             self.setup(**config)
             return
         elif action == "run":
-            job_config = self._get_job_config()
-            self.setup_job(job_config)
-            self.run_job(job_config)
-            self.postprocess_job(job_config)
+            self.job_config = self._get_job_config()
+            self.setup_job()
+            self.run_job()
         else:
             raise ValueError(f"Unsupported action {action}")
 
@@ -110,7 +109,7 @@ class BaseSimulator:
             manager = SimulationManager()
         manager.setup_simulation(self, **config)
 
-    def setup_job(self, job_config):
+    def setup_job(self):
         """Called before the main work is done for a job
         """
 
@@ -125,40 +124,50 @@ class BaseSimulator:
         )
         self._run_command(f"chmod +x adcprep {exec_name}")
 
-    def run_job(self, job_config):
+    def run_job(self):
         """Run on HPC resources.
 
         This is the entry point for a single job within the simulation.
         """
 
-        node_count = int(job_config.get("node_count"))
-        procsPerNode = int(job_config.get("processors_per_node"))
-        writers, workers = BaseSimulator.get_writers_and_workers(
-            node_count, procsPerNode
-        )
-        logger.info("Starting first adcprep run. . .")
-        # ADCPREP returns an exit code of 1 on success - it's terrible . . .
-        self._run_command(
-            f"printf '{workers}\\n1\\nfort.14\\n' | ./adcprep > adcprep.log", check=False
-        )
-        logger.info("Starting second adcprep run. . .")
-        self._run_command(f"printf '{workers}\\n2\\n' | ./adcprep >> adcprep.log", check=False)
-        logger.info("Completed second adcprep run. Starting ADCIRC . . .")
-        exec_name = self._get_exec_name()
-        self._run_command(f"ibrun ./{exec_name} -W {writers}")
-        logger.info("Completed ADCIRC run.")
+        run = self.config
+        run_dir = self.job_config['job_dir']
+        pre_cmd = self.make_preprocess_command(run, run_dir)
+        post_cmd = self.make_postprocess_command(run, run_dir)
+        if pre_cmd is not None:
+            self._run_command(pre_cmd, check=False)
 
-    def postprocess_job(self, job_config):
-        """Postprocess the job
+        self._run_command("ibrun " + self.make_main_command(run, run_dir))
         
-        Intensive post-processing steps that require parallelization should take place in run_job.
-        This is for light post-processing and copying results back to WORK.
-        """
-   
-        outdir = self.config.get("outputs_dir")
+        if post_cmd is not None:
+            self._run_command(post_cmd)
+
+    def make_preprocess_command(self, run, run_dir):
+        writers, workers = self.get_writers_and_workers()
+        job_dir = self.job_config['job_dir']
+        return ";".join(
+            [
+                f"cd {run_dir}",
+                f"printf '{workers}\\n1\\nfort.14\\n' | {job_dir}/adcprep > {run_dir}/adcprep.log",
+                f"printf '{workers}\\n2\\n' | {job_dir}/adcprep >> {run_dir}/adcprep.log",
+                f"cd {job_dir}",
+            ]
+        )
+
+    def make_main_command(self, run, run_dir):
+        job_dir = self.job_config["job_dir"]
+        writers, workers = self.get_writers_and_workers()
+        exec_name = self._get_exec_name()
+        if job_dir != run_dir:
+            return f"{job_dir}/{exec_name} -I {run_dir} -O {run_dir} -W {writers}"
+        else:
+            return f"{job_dir}/{exec_name} -W {writers}"
+
+    def make_postprocess_command(self, run, run_dir):
+        outdir = run.get('outputs_dir')
         if outdir is not None:
             os.makedirs(outdir, exist_ok=True)
-            self._run_command(f"cp {job_config['job_dir']}/*.nc {outdir}")
+            return f"cp {run_dir}/*.nc {outdir}"
 
     def _run_command(self, command, check=True, **kwargs):
         logger.info(f"Running '{command}'")
@@ -185,12 +194,13 @@ class BaseSimulator:
     def add_commandline_args(self, parser):
         pass
 
-    def test(self):
-        """Do a dry run of the simulation.
-        
-        This mocks outputs of ADCIRC runs and allows for testing of user code.
-        """
-        pass
+    def get_arg(self, arg):
+        return self.job_config["args"][arg]
+
+    def _format_param(self, param):
+        if type(param) is str:
+            return param.format(**self.job_config["args"])
+        return param
 
     def _get_job_config(self):
         """Get config of local job
@@ -244,8 +254,10 @@ class BaseSimulator:
         else:
             return f"{hours:02}:{minutes:02}:00"
 
-    @staticmethod
-    def get_writers_and_workers(node_count, procsPerNode):
+  
+    def get_writers_and_workers(self):
+        node_count = int(self.config.get("node_count"))
+        procsPerNode = int(self.job_config.get("processors_per_node"))        
         totalProcs = node_count * procsPerNode
         writers = node_count
         workers = totalProcs - writers
@@ -319,67 +331,57 @@ class EnsembleSimulator(BaseSimulator):
             res.append(config)
         return res
 
-    def setup_job(self, job_config):
-        super().setup_job(job_config)
+    def setup_job(self):
+        super().setup_job()
         os.makedirs("runs", exist_ok=True)
         ndigits = len(str(len(self.config["runs"])))
         self.run_dirs = []
-        job_dir = job_config['job_dir']
-        for run, ind in zip(job_config["jobRuns"], job_config["jobRunInds"]):
+        job_dir = self.job_config['job_dir']
+        for run, ind in zip(self.job_config["jobRuns"], self.job_config["jobRunInds"]):
             run_dir = f"{job_dir}/runs/run{ind:0{ndigits}}"
             os.makedirs(run_dir, exist_ok=True)
             self._run_command(f"ln -sf {job_dir}/inputs/* {run_dir}")
-            self.setup_run(run, run_dir, job_config)
+            self.setup_run(run, run_dir)
             self.run_dirs.append(run_dir)
 
-    def setup_run(self, run, run_dir, job_config):
+    def setup_run(self, run, run_dir):
         """Do any setup specific to the run.
 
         For parameter sweeps, this is where parameters are set.
         """
 
+        for k, v in list(run.items()):
+            run[k] = self._format_param(v)
+
         if "inputs_dir" in run:
             # add extra inputs/overwrite existing ones
-            self._run_command(f"ln -sf {run['inputs_dir']}/* {run_dir}")
+            command = "cp" if run.get("copy_inputs") else "ln -sf"
+            self._run_command(f"{command} {run['inputs_dir']}/* {run_dir}")
 
         if "parameters" in run:
             # TODO - edit input parameter files, performing copy-on-write
             pass
 
-    def run_job(self, job_config):
+    def run_job(self):
 
         # Step 1 - generate Pylauncher input
         tasks = []
+        job_dir = self.job_config['job_dir']
 
-        # We have to be careful to use node_count from config - because that corresponds
-        # to the per-run nodes
-        writers, workers = BaseSimulator.get_writers_and_workers(
-            self.config["node_count"], job_config["processors_per_node"]
-        )
-
-        total = workers + writers
-        exec_name = self._get_exec_name()
-        job_dir = job_config['job_dir']
-
-        for run, run_dir in zip(job_config['jobRuns'], self.run_dirs):
+        for run, run_dir in zip(self.job_config['jobRuns'], self.run_dirs):
             # We need to redirect the output of adcprep to a file - because with subprocess.Popen
             # if a process has too much output it can cause a deadlock
-            pre_process = ";".join(
-                [
-                    f"cd {run_dir}",
-                    f"printf '{workers}\\n1\\nfort.14\\n' | {job_dir}/adcprep > {run_dir}/adcprep.log",
-                    f"printf '{workers}\\n2\\n' | {job_dir}/adcprep >> {run_dir}/adcprep.log",
-                    f"cd {job_dir}",
-                ]
-            )
 
+            pre_process = self.make_preprocess_command(run, run_dir)
+            postprocess_cmd = self.make_postprocess_command(run, run_dir)
             task = {
-                "cores": total,
-                "pre_process": pre_process,
-                "main": f"{job_dir}/{exec_name} -I {run_dir} -O {run_dir} -W {writers}",
+                    "cores": self.config["node_count"] * self.job_config["processors_per_node"],
+                    # the command executed in parallel
+                    "main": self.make_main_command(run, run_dir),
             }
 
-            postprocess_cmd = self.make_postprocess_command(run, run_dir)
+            if pre_process is not None:
+                task["pre_process"] = pre_process
 
             if postprocess_cmd is not None:
                 task["post_process"] = postprocess_cmd 
@@ -393,7 +395,4 @@ class EnsembleSimulator(BaseSimulator):
 
         IbrunLauncher(outfile, pre_post_process=True)
 
-    def make_postprocess_command(self, run, run_dir):
-        outdir = run.get('outputs_dir')
-        if outdir is not None:
-            return f"cp {run_dir}/*.nc {outdir}"
+
