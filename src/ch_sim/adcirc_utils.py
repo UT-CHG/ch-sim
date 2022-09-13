@@ -764,6 +764,13 @@ def fix_fort_params(fname, params):
     with open(fname, "w") as fp:
         fp.write("".join(lines))
 
+def fix_all_fort15_params_cmd(run_dir, params):
+    cmd_list = []
+    for k,v in params.items():
+         cmd_list.append(f"s/.*\!.*{k}/{v}    ! {k}/g")
+    return f"sed -i '{ ';'.join(cmd_list)}' {run_dir}/PE*/fort.15"
+
+
 def snatch_fort_params(fname, params):
     res = {}
     with open(fname, "r") as fp:
