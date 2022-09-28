@@ -21,7 +21,7 @@ class SegmentedSimulator(BaseSimulator):
 
     def run_segment(self):
         if not self.steps:
-            self.init_fort15(self.job_config['job_dir'])
+            self.init_fort15(self.job_config, self.job_config['job_dir'])
         super().run_job()
         self.steps += 1
 
@@ -58,7 +58,7 @@ class SegmentedSimulator(BaseSimulator):
         ihot, run['interval'] = hot_params["ihot"], hot_params["interval"]
         # check to see if we have an existing hotstart file
         if ihot.endswith("67") or ihot.endswith("68"):
-            with nc.Dataset(job_dir + "/fort."+ihot[-2:]+".nc") as ds:
+            with nc.Dataset(run_dir + "/fort."+ihot[-2:]+".nc") as ds:
                 base_date = ds["time"].base_date.split("!")[0]
                 new_rndy = run['interval'] + self._get_hotstart_days(ds)
                 au.fix_fort_params(fort15, {"BASE_DATE": base_date, "RND": self.fix_rndy(new_rndy)})
@@ -75,10 +75,11 @@ class SegmentedSimulator(BaseSimulator):
         # round to match the format expected by ADCIRC (too many digits results in an error)
         return round(rndy + 5e-3, 2)
 
-    def get_last_hotstart(self, run_dir):
+    def get_last_hotstart(self, run_dir=None):
         """Return the most recent hotstart file
         """
-            
+        if run_dir is None:
+            run_dir = self.job_config['job_dir']
         # determine which hotstart file is more recent
         files = [run_dir+"/fort.67.nc", run_dir+"/fort.68.nc"]
         return max(files, key=os.path.getmtime)

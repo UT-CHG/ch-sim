@@ -89,6 +89,8 @@ class BaseSimulator:
         action = self.args.action
         self.config = config
         if action == "setup":
+            # add job dependency id
+            config["dependency"] = self.args.dependency
             self._validate_config()
             self.setup(**config)
             return
@@ -180,6 +182,8 @@ class BaseSimulator:
     def _get_args(self):
         action_parser = ap.ArgumentParser(add_help=False)
         action_parser.add_argument("--action", default="setup", choices=["setup", "run"])
+        # optional job dependency
+        action_parser.add_argument("--dependency", type=str)
         action_args, _ = action_parser.parse_known_args()
         if action_args.action == "setup":
             parser = ap.ArgumentParser(parents=[action_parser])
@@ -232,6 +236,7 @@ class BaseSimulator:
             "desc": "",
             "inputs": {},
             "parameters": {},
+            "dependency": config.get("dependency"),
         }
 
         if self.allocation is not None:

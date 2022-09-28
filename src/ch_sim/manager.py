@@ -29,6 +29,7 @@ submit_script_template = """#!/bin/bash
 #SBATCH -t {run_time}         # Run time (hh:mm:ss)
 #SBATCH --ntasks-per-node {processors_per_node} # tasks per node
 #SBATCH -A {allocation} # Allocation name
+{extra_directives}
 #----------------------------------------------------
 
 cd {job_dir}
@@ -154,6 +155,10 @@ class SimulationManager:
     def add_submit_script(self, job_config):
         fname = job_config['job_dir'] + "/submit_script.sh"
         with open(fname, "w") as fp:
+            extra_directives = ""
+            dependency = job_config.get("dependency")
+            if dependency is not None:
+                extra_directives += "\n#SBATCH --dependency=afterok:"+str(dependency)
             fp.write(
                     submit_script_template.format(
                         job_name=job_config["name"],
@@ -165,6 +170,7 @@ class SimulationManager:
                         cores=job_config["node_count"]*job_config["processors_per_node"],
                         node_count=job_config["node_count"],
                         processors_per_node=job_config["processors_per_node"],
+                        extra_directives=extra_directives,
                         )
                     )
 
