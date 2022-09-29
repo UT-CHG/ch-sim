@@ -248,6 +248,16 @@ class BaseSimulator:
 
         return res
 
+    def config_by_host(self, **kwargs):
+        import socket
+        hostname = socket.gethostname()
+        for pattern, config in kwargs.items():
+            if pattern in hostname:
+                return config
+
+        raise ValueError("Unsupported hostname '{hostname}', must contain one of {list(kwargs.keys)}.") 
+
+
     @staticmethod
     def hours_to_runtime_str(hours):
         days = math.floor(hours / 24)
