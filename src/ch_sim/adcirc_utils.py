@@ -966,5 +966,60 @@ def set_swan_params(fname, start_date, last_date, tstep=1200):
     writelines(fname, new_lines)
     return wtiminc
 
+def compute_tides(rnday, start_date, tide_fac_path):
+    """Compute the tidal node factors and degrees
+
+    rnday -- days to run simulation
+    start_date -- date of simulation start
+    tide_fac_path -- path to tide_fac executable
+    """
+
+    hours = start_date.hour
+    days = start_date.day
+    month = start_date.month
+    year = start_date.year
+    outfile = "tide_fac.out"
+    if os.path.exists(outfile):
+        os.system(f"rm {outfile}")
+    subprocess.run(f"printf '{rnday}\\n{hours} {days} {month} {year}\\n' | {tide_fac_path}",
+            shell=True, check=True)
+    # read outfile
+    seen_name = False
+    tides = {}
+    with open(outfile) as fp:
+        for line in fp:
+            parts = line.strip().split()
+            if not len(parts): continue
+            if parts[0].lower() == "name" and not seen_name:
+                seen_name = True
+                continue
+            if len(parts) == 3 and seen_name:
+                tides[parts[0]] = parts[1:]
+
+    return tides
+
+def set_tides(fort15, tides):
+    with open(fort15) as fp:
+        lines = fp.readlines()
+
+    for i in range(len(lines)-1):
+        l = lines[i].strip().split()[0]
+        if l in tides:
+            factor, deg = tides[l]
+            next_line = lines[i+1]
+            parts = next_line.split("!")
+            data = parts[0].split()
+            if len(data) < 3:
+                continue
+            data[-2], data[-1] = factor, deg
+            stripped = parts[0].rstrip()
+            trailing_whitespace = parts[0][len(stripped):]
+            parts[0] = " ".join(data) + trailing_whitespace
+
+            lines[i+1] = "!".join(parts)
+
+    with open(fort15, "w") as fp:
+        fp.write("".join(lines))
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
