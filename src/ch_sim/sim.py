@@ -53,6 +53,8 @@ class BaseSimulator:
         if name is None:
             self.name = os.path.basename(script_file).split(".")[0]
 
+        self.args = self._get_args()
+
     def _init_from_env(self):
         load_dotenv()
         for attr in ["PSW", "USER", "SYSTEM", "ALLOCATION"]:
@@ -85,7 +87,6 @@ class BaseSimulator:
         """
 
         # Determine what we need to do
-        self.args = self._get_args()
         action = self.args.action
         self.config = config
         if action == "setup":
