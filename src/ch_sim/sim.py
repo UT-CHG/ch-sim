@@ -97,6 +97,8 @@ class BaseSimulator:
             return
         elif action == "run":
             self.job_config = self._get_job_config()
+            # Ensure simulation-level config is identical to what was set at setup time
+            self.config.update(self.job_config.get("sim_config", {}))
             self.setup_job()
             self.run_job()
         else:
@@ -238,6 +240,7 @@ class BaseSimulator:
             "inputs": {},
             "parameters": {},
             "dependency": config.get("dependency"),
+            "sim_config": self.config
         }
 
         if self.allocation is not None:
