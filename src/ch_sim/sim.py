@@ -344,6 +344,7 @@ class EnsembleSimulator(BaseSimulator):
             else:
                 input_config["node_count"] = min(numSlots, numJobRuns) * nodesPerRun
                 input_config["runtime"] = math.ceil(numJobRuns / numSlots) * timePerRun
+            input_config["node_count"] = int(math.ceil(input_config["node_count"]))
             config = self._base_job_config(**input_config)
             for i in range(len(jobRuns)):
                 jobRuns[i]["index"] = i

@@ -757,6 +757,8 @@ def fix_fort_params(fname, params):
         for param, new_value in list(params.items()):
             if param.lower() in comment.lower():
                 new_value = str(new_value).ljust(len(value), " ")
+                if len(new_value) >= len(value):
+                    new_value += " "
                 lines[i] = new_value+"!"+comment
                 del params[param]
                 break
