@@ -172,7 +172,10 @@ class BaseSimulator:
         outdir = run.get('outputs_dir')
         if outdir is not None:
             os.makedirs(outdir, exist_ok=True)
-            return f"cp {run_dir}/*.nc {outdir}"
+            command = "cp"
+            if run.get("symlink_outputs"):
+                command = "ln -sf"
+            return f"{command} {run_dir}/*.nc {outdir}"
 
     def _run_command(self, command, check=True, **kwargs):
         logger.info(f"Running '{command}'")

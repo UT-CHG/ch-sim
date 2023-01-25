@@ -1023,5 +1023,47 @@ def set_tides(fort15, tides):
     with open(fort15, "w") as fp:
         fp.write("".join(lines))
 
+
+def set_run_dates(inputsdir, start_date, end_date,
+        swan=False, tide_fac_path=None, swan_tstep=1200):
+    """Given an ADCIRC template, set the run dates and update the tides.
+
+    This function will update BASE_DATE, RNDY, and will set the swan control files appropriately.
+    If swan is True, then it will ensure NWS and WTIMINC are set properly.
+    """
+
+    start, end = pd.to_datetime(start_date), pd.to_datetime(end_date)
+    diff = end-start
+    rnday = diff.days + diff.seconds / 86400
+    out_fort15 = f"{inputsdir}/fort.15"
+    fix_fort_params(out_fort15, {
+            "BASE_DATE": start.strftime("%Y-%m-%d 00:00:00 UTC"),
+            "RND": rnday
+        }
+    )
+
+    if tide_fac_path is not None:
+        tides = compute_tides(rnday, start, tide_fac_path)
+        set_tides(out_fort15, tides)
+
+    if swan:
+        params = snatch_fort_params(out_fort15, ["WTIM", "NWS"])
+        wtiminc_line = params["WTIM"]
+        nws = params["NWS"].strip()
+        if len(nws) < 3 or nws[-3] != 3:
+            nws = list(nws)
+            nws[-3] = 3
+            nws = ''.join(nws)
+            #wtimin
+        if nws.endswith("20"):
+            swan_tstep = int(wtiminc_line.strip().split()[1])
+        elif nws.endswith("12"):
+            swan_tstep = int(wtiminc_line.strip().split()[-1])
+        else:
+            raise ValueError(f"Unsupported NWS - {nws}!")
+        
+        print(f"Determined SWAN timestep as {swan_tstep}")
+        set_swan_params(inputsdir+"/fort.26", start, end, swan_tstep=swan_tstep)
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
