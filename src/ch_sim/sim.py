@@ -164,7 +164,9 @@ class BaseSimulator:
         writers, workers = self.get_writers_and_workers()
         exec_name = self._get_exec_name()
         if job_dir != run_dir:
-            return f"{job_dir}/{exec_name} -I {run_dir} -O {run_dir} -W {writers}"
+            # ADCIRC and especially SWAN bug out when not run in working directory
+            # This works because of how pylauncher wraps things 
+            return f"cd {run_dir}; {job_dir}/{exec_name} -W {writers}"
         else:
             return f"{job_dir}/{exec_name} -W {writers}"
 
