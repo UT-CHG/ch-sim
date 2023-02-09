@@ -90,7 +90,7 @@ class SegmentedSimulator(BaseSimulator):
         # round to match the format expected by ADCIRC (too many digits results in an error)
         return {
              "RND": round(rndy + 5e-3, 2),
-             "NHSINC": "5 " + str(int(rndy * SECS_IN_DAY / dt))
+             "NHSINC": "5 " + str(int(float(rndy) * SECS_IN_DAY / float(dt)))
         }
 
     def get_last_hotstart(self, run_dir=None):
