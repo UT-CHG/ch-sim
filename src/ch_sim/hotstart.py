@@ -23,7 +23,7 @@ class SegmentedSimulator(BaseSimulator):
             self.steps += 1
 
     def add_commandline_args(self, parser):
-        parser.add_argument("--run-days", required=True, type=int)
+        parser.add_argument("--run-days", required=True, type=float)
         parser.add_argument("--interval-hours", type=float)
 
     def done(self):
