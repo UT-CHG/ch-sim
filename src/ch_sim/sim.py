@@ -177,7 +177,10 @@ class BaseSimulator:
             command = "cp"
             if run.get("symlink_outputs"):
                 command = "ln -sf"
-            return f"{command} {run_dir}/*.nc {outdir}"
+            files = run.get("output_files", ["*.nc"])
+            if type(files) is str: files = [files]
+            files_str = " ".join([f"{run_dir}/{filename}" for filename in files])
+            return f"{command} {files_str} {outdir}"
 
     def _run_command(self, command, check=True, **kwargs):
         logger.info(f"Running '{command}'")
@@ -283,7 +286,10 @@ class BaseSimulator:
         node_count = int(self.config.get("node_count"))
         procsPerNode = int(self.job_config.get("processors_per_node"))        
         totalProcs = node_count * procsPerNode
-        writers = node_count
+        if self.config.get("no_writers"):
+            writers = 0
+        else:
+            writers = node_count
         workers = totalProcs - writers
         return writers, workers
 
