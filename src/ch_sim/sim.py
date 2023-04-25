@@ -166,7 +166,7 @@ class BaseSimulator:
         if job_dir != run_dir:
             # ADCIRC and especially SWAN bug out when not run in working directory
             # This works because of how pylauncher wraps things 
-            return f"cd {run_dir}; {job_dir}/{exec_name} -W {writers}"
+            return f"cd {run_dir}; {job_dir}/{exec_name} -W {writers} &> {run_dir}/exec.log"
         else:
             return f"{job_dir}/{exec_name} -W {writers}"
 
