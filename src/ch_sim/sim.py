@@ -283,13 +283,13 @@ class BaseSimulator:
 
   
     def get_writers_and_workers(self):
-        node_count = int(self.config.get("node_count"))
+        node_count = self.config.get("node_count")
         procsPerNode = int(self.job_config.get("processors_per_node"))        
-        totalProcs = node_count * procsPerNode
+        totalProcs = int(node_count * procsPerNode)
         if self.config.get("no_writers"):
             writers = 0
         else:
-            writers = node_count
+            writers = int(node_count)
         workers = totalProcs - writers
         return writers, workers
 
@@ -393,8 +393,8 @@ class EnsembleSimulator(BaseSimulator):
             self._run_command(f"{command} {run['inputs_dir']}/* {run_dir}")
 
         if "parameters" in run:
-            # TODO - edit input parameter files, performing copy-on-write
-            pass
+            # For now, only modify fort15
+            au.fix_fort_params(f"{run_dir}/fort.15", run["parameters"])
 
     def run_job(self):
 

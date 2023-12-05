@@ -768,6 +768,9 @@ def fix_fort_params(fname, params):
                 del params[param]
                 break
 
+    # make sure we only modify the local copy
+    remove_symlink(fname)
+
     with open(fname, "w") as fp:
         fp.write("".join(lines))
 
