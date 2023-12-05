@@ -166,7 +166,7 @@ class BaseSimulator:
         if job_dir != run_dir:
             # ADCIRC and especially SWAN bug out when not run in working directory
             # This works because of how pylauncher wraps things 
-            return f"cd {run_dir}; {job_dir}/{exec_name} -W {writers}"
+            return f"cd {run_dir}; {job_dir}/{exec_name} -W {writers} &> {run_dir}/exec.log"
         else:
             return f"{job_dir}/{exec_name} -W {writers}"
 
@@ -409,7 +409,7 @@ class EnsembleSimulator(BaseSimulator):
             pre_process = self.make_preprocess_command(run, run_dir)
             postprocess_cmd = self.make_postprocess_command(run, run_dir)
             task = {
-                    "cores": self.config["node_count"] * self.job_config["processors_per_node"],
+                    "cores": int(self.config["node_count"] * self.job_config["processors_per_node"]),
                     # the command executed in parallel
                     "main": self.make_main_command(run, run_dir),
             }
