@@ -936,6 +936,15 @@ def open_paramfile(fname):
     remove_symlink(fname)
     return open(fname, "w")
 
+def symlink_to_copy(fname):
+    """If a filename is a symlink, replace with a copy
+    """
+
+    if os.path.islink(fname):
+        with open(fname, "r") as fp: data = fp.read()
+        os.unlink(fname)
+        with open(fname, "w") as fp: fp.write(data)
+
 def add_swan(inputsdir, start_date, end_date, tstep=1200):
     """Enable SWAN for an ADCIRC inputs directory
     """

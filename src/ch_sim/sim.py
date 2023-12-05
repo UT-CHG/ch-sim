@@ -283,9 +283,9 @@ class BaseSimulator:
 
   
     def get_writers_and_workers(self):
-        node_count = int(self.config.get("node_count"))
+        node_count = self.config.get("node_count")
         procsPerNode = int(self.job_config.get("processors_per_node"))        
-        totalProcs = node_count * procsPerNode
+        totalProcs = int(node_count * procsPerNode)
         if self.config.get("no_writers"):
             writers = 0
         else:
@@ -409,7 +409,7 @@ class EnsembleSimulator(BaseSimulator):
             pre_process = self.make_preprocess_command(run, run_dir)
             postprocess_cmd = self.make_postprocess_command(run, run_dir)
             task = {
-                    "cores": self.config["node_count"] * self.job_config["processors_per_node"],
+                    "cores": int(self.config["node_count"] * self.job_config["processors_per_node"]),
                     # the command executed in parallel
                     "main": self.make_main_command(run, run_dir),
             }
